@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "dailey-os": {
+      "command": "node",
+      "args": ["/home/jonny/apps/dailey-mcp/dist/index.js"],
+      "env": {
+        "DAILEY_EMAIL": "<your-email>",
+        "DAILEY_PASSWORD": "<your-password>",
+        "DAILEY_API_URL": "https://os.dailey.cloud/api"
+      }
+    }
+  }
+}

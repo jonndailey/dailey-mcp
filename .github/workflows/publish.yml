@@ -1,0 +1,93 @@
+name: Build and publish
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+      - run: npm ci
+      - run: npm run build
+      - name: Smoke-test MCP server
+        run: |
+          # Launch the server with fake creds and check it responds to
+          # `initialize` + `tools/list`. The server refuses to start if
+          # neither DAILEY_API_TOKEN nor DAILEY_EMAIL is set, so we pass
+          # a throwaway email+password. We never hit the Dailey OS API
+          # during this probe — tools/list is pure schema.
+          node -e '
+            const { spawn } = require("child_process");
+            const proc = spawn("node", ["dist/index.js"], {
+              env: { ...process.env, DAILEY_EMAIL: "ci@test.invalid", DAILEY_PASSWORD: "ci" },
+              stdio: ["pipe", "pipe", "pipe"],
+            });
+            let buf = ""; const got = [];
+            proc.stdout.on("data", c => {
+              buf += c.toString();
+              let i;
+              while ((i = buf.indexOf("\n")) !== -1) {
+                const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+                if (line) try { got.push(JSON.parse(line)); } catch {}
+              }
+            });
+            const send = (m) => proc.stdin.write(JSON.stringify(m) + "\n");
+            send({ jsonrpc: "2.0", id: 1, method: "initialize", params: {
+              protocolVersion: "2024-11-05", capabilities: {},
+              clientInfo: { name: "ci", version: "0.1" },
+            }});
+            setTimeout(() => {
+              send({ jsonrpc: "2.0", method: "notifications/initialized" });
+              send({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} });
+            }, 500);
+            setTimeout(() => {
+              proc.kill("SIGTERM");
+              const init = got.find(m => m.id === 1);
+              const tools = got.find(m => m.id === 2);
+              if (!init || init.error) { console.error("initialize failed:", init); process.exit(1); }
+              if (!tools || !tools.result?.tools) { console.error("tools/list failed:", tools); process.exit(1); }
+              const n = tools.result.tools.length;
+              console.log(`✓ initialize handshake ok`);
+              console.log(`✓ tools/list returned ${n} tools`);
+              if (n < 25) { console.error(`expected at least 25 tools, got ${n}`); process.exit(1); }
+              process.exit(0);
+            }, 2500);
+          '
+
+  publish:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+      - run: npm ci
+      - run: npm run build
+      - name: Verify tag matches package.json version
+        run: |
+          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "Tag v$TAG_VERSION does not match package.json version $PKG_VERSION" >&2
+            exit 1
+          fi
+          echo "Publishing v$PKG_VERSION"
+      - run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
