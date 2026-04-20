@@ -142,17 +142,28 @@ export function registerProjectTools(server: McpServer) {
         services = manifest.entries.filter((e: any) => e.type === 'managed' || e.type === 'app_service');
       }
 
+      // Safety: ensure at least one service is marked 'app_service' so the
+      // deployer knows which one gets the public ingress. Without this, all
+      // services deploy as "internal only" and the project is unreachable
+      // with no warning. (Scott hit this on 2026-04-20.)
+      const hasAppService = services?.some((s: any) => s.type === 'app_service');
+      if (services?.length && !hasAppService) {
+        services[0].type = 'app_service';
+      }
+
       const res = await apiRequest<any>('POST', `/projects/${project_id}/deploy-multi`, {
         selected_services: services,
       });
       if (!res.ok) return textResult(formatError(res));
 
+      const primary = services?.find((s: any) => s.type === 'app_service')?.name;
       return textResult([
         `Multi-container deploy triggered!`,
         ``,
         `Build ID:       ${res.data.build_id}`,
         `Deploy Group:   ${res.data.deploy_group_id}`,
         `Services:       ${services?.length || 0}`,
+        `Primary (web):  ${primary || 'none — check deploy log'}`,
       ].join('\n'));
     },
   );
