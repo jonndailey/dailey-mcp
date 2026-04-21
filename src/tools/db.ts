@@ -110,7 +110,7 @@ export function registerDbTools(server: McpServer) {
 
   server.tool(
     'dailey_db_recall',
-    'Recall records with a safe read-only SQL query',
+    'Recall records with a safe read-only SQL query (SELECT / SHOW / DESCRIBE / EXPLAIN / WITH). Mutating SQL (INSERT / UPDATE / DELETE / DDL) is rejected by the server. For writes, use the `dailey db import` CLI command — invoke `dailey_cli_suggest_import` to construct it. For ad-hoc DBA work, use `dailey db connect`.',
     {
       project_id: z.string().describe('The project ID'),
       sql: z.string().describe('A read-only SQL query such as SELECT, SHOW, or DESCRIBE'),
@@ -140,6 +140,110 @@ export function registerDbTools(server: McpServer) {
       }
 
       return textResult(lines.join('\n'));
+    },
+  );
+
+  server.tool(
+    'dailey_db_validate',
+    'Validate a SQL migration BEFORE deploying it. Catches security issues (SQL injection vectors, privilege escalation, system catalog access) and semantic issues (CREATE TABLE without IF NOT EXISTS when table exists, ALTER ADD COLUMN when column already exists).',
+    {
+      project_id: z.string().describe('The project ID'),
+      sql: z.string().describe('SQL migration to validate (can contain multiple statements separated by ;)'),
+    },
+    async ({ project_id, sql }) => {
+      const res = await apiRequest<any>('POST', `/projects/${project_id}/database/validate`, { sql });
+      if (!res.ok) return textResult(formatError(res));
+
+      const d = res.data;
+      const lines = [
+        `Migration validation`,
+        '─'.repeat(40),
+        `Valid:    ${d.valid ? '✓' : '✗'}`,
+        `Warnings: ${d.has_warnings ? 'yes' : 'no'}`,
+        `Summary:  ${d.summary || '-'}`,
+      ];
+
+      if (d.statements?.length) {
+        lines.push('');
+        lines.push('Statements:');
+        for (const s of d.statements) {
+          const marker = s.valid ? (s.warning ? '⚠' : '✓') : '✗';
+          lines.push(`  ${marker} ${s.sql}${s.sql.length >= 80 ? '...' : ''}`);
+          if (s.error) lines.push(`     error: ${s.error}`);
+          if (s.warning) lines.push(`     warn:  ${s.warning}`);
+          if (s.info) lines.push(`     info:  ${s.info}`);
+        }
+      }
+
+      if (d.errors?.length) {
+        lines.push('');
+        lines.push('Errors:');
+        for (const e of d.errors) lines.push(`  ✗ ${e}`);
+      }
+
+      if (d.warnings?.length) {
+        lines.push('');
+        lines.push('Warnings:');
+        for (const w of d.warnings) lines.push(`  ⚠ ${w}`);
+      }
+
+      return textResult(lines.join('\n'));
+    },
+  );
+
+  server.tool(
+    'dailey_db_tunnel',
+    'Open, close, or list short-lived database tunnel sessions. A tunnel issues a per-session MySQL/Postgres user for GUI access (e.g., TablePlus, DBeaver). Sessions auto-expire after ~1 hour.',
+    {
+      project_id: z.string().describe('The project ID'),
+      action: z.enum(['open', 'close', 'list']).describe('open | close | list'),
+      session_id: z.string().optional().describe('Session ID to close (required for close)'),
+    },
+    async ({ project_id, action, session_id }) => {
+      if (action === 'open') {
+        const res = await apiRequest<any>('POST', `/projects/${project_id}/database/tunnel`);
+        if (!res.ok) return textResult(formatError(res));
+        const d = res.data;
+        return textResult([
+          `Database tunnel opened`,
+          '─'.repeat(40),
+          `Session ID: ${d.session_id}`,
+          `Engine:     ${d.engine}`,
+          `Host:       ${d.host}:${d.port}`,
+          `Database:   ${d.database}`,
+          `Username:   ${d.username}`,
+          `Password:   ${d.password}`,
+          `Expires at: ${d.expires_at} (${d.ttl_seconds}s)`,
+          '',
+          `${d.message}`,
+          '',
+          `Close with: dailey_db_tunnel action=close session_id=${d.session_id}`,
+        ].join('\n'));
+      }
+
+      if (action === 'close') {
+        if (!session_id) return textResult('Error: session_id is required to close.');
+        const res = await apiRequest(
+          'DELETE',
+          `/projects/${project_id}/database/tunnel/${encodeURIComponent(session_id)}`,
+        );
+        if (!res.ok) return textResult(formatError(res));
+        return textResult(`Tunnel session ${session_id} closed.`);
+      }
+
+      if (action === 'list') {
+        const res = await apiRequest<{ sessions: any[] }>('GET', `/projects/${project_id}/database/tunnel`);
+        if (!res.ok) return textResult(formatError(res));
+        const sessions = res.data.sessions || [];
+        if (sessions.length === 0) return textResult('No active tunnel sessions.');
+        const lines = [`Active tunnel sessions (${sessions.length})`, '─'.repeat(40)];
+        for (const s of sessions) {
+          lines.push(`• ${s.sessionId} engine=${s.engine} expires=${new Date(s.expiresAt).toISOString()}`);
+        }
+        return textResult(lines.join('\n'));
+      }
+
+      return textResult('Invalid action. Use open, close, or list.');
     },
   );
 
