@@ -193,7 +193,7 @@ export function registerDbTools(server: McpServer) {
 
   server.tool(
     'dailey_db_tunnel',
-    'Open, close, or list short-lived database tunnel sessions. A tunnel issues a per-session MySQL/Postgres user for GUI access (e.g., TablePlus, DBeaver). Sessions auto-expire after ~1 hour.',
+    'Open, close, or list short-lived database tunnel sessions. A tunnel issues a per-session MySQL/Postgres user for GUI access (e.g., TablePlus, DBeaver). Sessions auto-expire after ~1 hour. IMPORTANT: the tunnel host is a Tailscale CGNAT IP (100.x.x.x) — the client machine must be on the Dailey Tailnet. If not, the connection will time out with no useful error. For data loads that do not require GUI access, prefer `dailey db import` (see `dailey_cli_suggest_import`).',
     {
       project_id: z.string().describe('The project ID'),
       action: z.enum(['open', 'close', 'list']).describe('open | close | list'),
@@ -204,7 +204,8 @@ export function registerDbTools(server: McpServer) {
         const res = await apiRequest<any>('POST', `/projects/${project_id}/database/tunnel`);
         if (!res.ok) return textResult(formatError(res));
         const d = res.data;
-        return textResult([
+        const isTailnetHost = typeof d.host === 'string' && /^100\./.test(d.host);
+        const lines = [
           `Database tunnel opened`,
           '─'.repeat(40),
           `Session ID: ${d.session_id}`,
@@ -216,9 +217,22 @@ export function registerDbTools(server: McpServer) {
           `Expires at: ${d.expires_at} (${d.ttl_seconds}s)`,
           '',
           `${d.message}`,
-          '',
-          `Close with: dailey_db_tunnel action=close session_id=${d.session_id}`,
-        ].join('\n'));
+        ];
+        if (isTailnetHost) {
+          lines.push('');
+          lines.push('⚠  PREFLIGHT — Tailnet required:');
+          lines.push(`   The host ${d.host} is a Tailscale CGNAT address. Verify your client is on`);
+          lines.push(`   the Dailey Tailnet before connecting, otherwise your client will hang on`);
+          lines.push(`   connect. Quick check from the client: "tailscale status" should list`);
+          lines.push(`   an active node, and "ping ${d.host}" should respond.`);
+          lines.push('');
+          lines.push('   If the client can NOT be put on the Tailnet, use `dailey db import` for');
+          lines.push('   bulk data loads (JSON/CSV) or `dailey db recall` for read-only SELECTs —');
+          lines.push('   both route through the public API and do not require Tailscale.');
+        }
+        lines.push('');
+        lines.push(`Close with: dailey_db_tunnel action=close session_id=${d.session_id}`);
+        return textResult(lines.join('\n'));
       }
 
       if (action === 'close') {
