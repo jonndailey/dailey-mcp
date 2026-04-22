@@ -174,10 +174,16 @@ async function main() {
   await test('dailey_db_validate (dry)', async () => {
     // Does project have a DB? check db info first.
     const info = await call('GET', `/projects/${project.id}/database`);
-    if (!info.ok) return `no DB provisioned — skipped`;
+    if (!info.ok || info.data?.status === 'not-configured') return `no DB provisioned — skipped`;
     const r = await call('POST', `/projects/${project.id}/database/validate`, {
       sql: 'CREATE TABLE IF NOT EXISTS _mcp_smoke_test (id INT);',
     });
+    // Pack 4 fix: when a project has no managed DB, the API returns 400
+    // with a friendly "no managed database" error. Treat that as a skip,
+    // not a test failure.
+    if (r.status === 400 && typeof r.data?.error === 'string' && /no managed database/i.test(r.data.error)) {
+      return `no DB — skipped`;
+    }
     if (!r.ok) throw new Error(`HTTP ${r.status}: ${JSON.stringify(r.data)}`);
     return `valid=${r.data.valid}, warnings=${r.data.has_warnings}`;
   });
