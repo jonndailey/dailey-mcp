@@ -26,6 +26,7 @@ import { registerLinkTools } from './tools/links.js';
 import { registerCredentialRevealTools } from './tools/credentials-reveal.js';
 import { registerAnalyzeTools } from './tools/analyze.js';
 import { registerCliTools } from './tools/cli.js';
+import { registerBundleTools } from './tools/bundle.js';
 
 function preflight(): void {
   const isInteractive = Boolean(process.stdin.isTTY);
@@ -125,6 +126,9 @@ registerBackupTools(server);
 
 // CLI assist
 registerCliTools(server);
+
+// Atomic deploy bundle
+registerBundleTools(server);
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
