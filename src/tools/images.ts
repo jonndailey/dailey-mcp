@@ -10,17 +10,48 @@ export function registerImageTools(server: McpServer) {
     {
       image: z.string().describe('Docker image to deploy (e.g., wordpress:6-apache, nginx:alpine)'),
       name: z.string().optional().describe('Project name (auto-generated if not provided)'),
-      database: z.boolean().optional().describe('Provision a managed MySQL database (default: false)'),
+      database: z
+        .union([z.enum(['mysql', 'postgres']), z.boolean()])
+        .optional()
+        .describe('Provision a managed database: "mysql" | "postgres" | true (= mysql, for back-compat) | false. Default: no database.'),
     },
     async ({ image, name, database }) => {
       const projectName = name || image.split('/').pop()?.split(':')[0] || 'app';
+
+      // Normalize the database flag.
+      //   false / undefined → no DB
+      //   true              → mysql (back-compat with pre-0.9 callers)
+      //   "mysql" | "postgres" → that engine
+      let needsDatabase = false;
+      let databaseType: 'mysql' | 'postgres' | undefined;
+      if (database === true) {
+        needsDatabase = true;
+        databaseType = 'mysql';
+      } else if (database === 'mysql' || database === 'postgres') {
+        needsDatabase = true;
+        databaseType = database;
+      }
+
+      // Gentle nudge if the user asked for a DB alongside an image that
+      // IS the database — that's usually a mistake.
+      let noteIfRedundant = '';
+      const imgLower = image.toLowerCase();
+      if (needsDatabase && databaseType === 'postgres' && /(^|\/)postgres:/.test(imgLower)) {
+        noteIfRedundant = '\nNote: you asked for a managed Postgres alongside a postgres image. ' +
+          'The image IS a database — you probably want database: false and to connect to this project directly.\n';
+      }
+      if (needsDatabase && databaseType === 'mysql' && /(^|\/)mysql:|mariadb:/.test(imgLower)) {
+        noteIfRedundant = '\nNote: you asked for a managed MySQL alongside a MySQL/MariaDB image. ' +
+          'The image IS a database — you probably want database: false and to connect to this project directly.\n';
+      }
 
       // Create project
       const createRes = await apiRequest<any>('POST', '/projects', {
         name: projectName,
         repo_url: image,
         branch: 'main',
-        needs_database: database || false,
+        needs_database: needsDatabase,
+        database_type: databaseType,
       });
 
       if (!createRes.ok) return textResult(formatError(createRes));
@@ -40,8 +71,9 @@ export function registerImageTools(server: McpServer) {
       }
 
       if (project.database) {
-        result += `Database: ${project.database.database}\n`;
+        result += `Database: ${project.database.database} (${project.database.type || 'mysql'})\n`;
       }
+      if (noteIfRedundant) result += noteIfRedundant;
 
       if (deployRes.ok && deployRes.data?.credentials) {
         result += `\nCredentials:\n`;
