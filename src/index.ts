@@ -3,6 +3,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 
+import { hasCredentials } from './api.js';
 import { registerAuthTools } from './tools/auth.js';
 import { registerProjectTools } from './tools/projects.js';
 import { registerDeployTools } from './tools/deploy.js';
@@ -25,6 +26,66 @@ import { registerLinkTools } from './tools/links.js';
 import { registerCredentialRevealTools } from './tools/credentials-reveal.js';
 import { registerAnalyzeTools } from './tools/analyze.js';
 import { registerCliTools } from './tools/cli.js';
+
+function preflight(): void {
+  const isInteractive = Boolean(process.stdin.isTTY);
+
+  if (!hasCredentials()) {
+    const msg =
+      'Missing credentials. Set DAILEY_API_TOKEN, or DAILEY_EMAIL + DAILEY_PASSWORD.';
+
+    if (isInteractive) {
+      process.stderr.write(
+        '\n' +
+          'dailey-mcp: ' + msg + '\n\n' +
+          'This is an MCP stdio server — it is meant to be spawned by an MCP client\n' +
+          '(Claude Code, Cursor, etc.) which will send JSON-RPC messages on stdin.\n' +
+          'Running it directly in a shell is not how you use it.\n\n' +
+          'Add it to your client config like this:\n' +
+          '  {\n' +
+          '    "mcpServers": {\n' +
+          '      "dailey-os": {\n' +
+          '        "command": "npx",\n' +
+          '        "args": ["-y", "@daileyos/mcp-server"],\n' +
+          '        "env": { "DAILEY_API_TOKEN": "..." }\n' +
+          '      }\n' +
+          '    }\n' +
+          '  }\n\n' +
+          'Docs: https://docs.dailey.cloud/mcp/getting-started\n\n'
+      );
+    } else {
+      // Best-effort: some MCP clients surface unsolicited log notifications
+      // that arrive before the initialize handshake. Emit a structured JSON-RPC
+      // message so the client has something to render other than "process exited".
+      const note = {
+        jsonrpc: '2.0',
+        method: 'notifications/message',
+        params: {
+          level: 'error',
+          logger: 'dailey-mcp',
+          data: msg + ' See https://docs.dailey.cloud/mcp/getting-started',
+        },
+      };
+      process.stdout.write(JSON.stringify(note) + '\n');
+      process.stderr.write('dailey-mcp: ' + msg + '\n');
+    }
+    process.exit(1);
+  }
+
+  if (isInteractive) {
+    process.stderr.write(
+      '\n' +
+        'dailey-mcp: MCP stdio server running.\n' +
+        'This server speaks JSON-RPC 2.0 on stdin/stdout — it is driven by an MCP\n' +
+        'client (Claude Code, Cursor, etc.), not typed into directly. If you were\n' +
+        'trying to update it, you do not need to — `npx @daileyos/mcp-server` in\n' +
+        'your client config pulls latest at each session start.\n' +
+        'Press Ctrl+C to exit.\n\n'
+    );
+  }
+}
+
+preflight();
 
 const server = new McpServer({
   name: 'dailey-os',

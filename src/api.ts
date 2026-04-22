@@ -4,9 +4,11 @@ const DAILEY_PASSWORD = process.env.DAILEY_PASSWORD;
 
 let currentToken = process.env.DAILEY_API_TOKEN || '';
 
-if (!currentToken && !DAILEY_EMAIL) {
-  console.error('Either DAILEY_API_TOKEN or DAILEY_EMAIL + DAILEY_PASSWORD are required');
-  process.exit(1);
+// Credential preflight lives in index.ts so it can distinguish TTY vs
+// MCP-stdio invocation and emit a JSON-RPC-shaped error instead of just
+// dying with a stderr line that Claude Code doesn't surface.
+export function hasCredentials(): boolean {
+  return Boolean(currentToken || DAILEY_EMAIL);
 }
 
 async function refreshToken(): Promise<string> {

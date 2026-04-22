@@ -53,7 +53,8 @@ export function registerImageTools(server: McpServer) {
       }
 
       result += `\nBuild ID: ${deployRes.data?.build_id || 'pending'}\n`;
-      result += `View logs: dailey logs ${project.slug}`;
+      result += `\nNext: call dailey_deploy_status with project_id=${project.id} to watch progress.\n`;
+      result += `      If it fails, call dailey_build_logs with project_id=${project.id} for full output.`;
 
       return textResult(result);
     },

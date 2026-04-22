@@ -164,6 +164,9 @@ export function registerProjectTools(server: McpServer) {
         `Deploy Group:   ${res.data.deploy_group_id}`,
         `Services:       ${services?.length || 0}`,
         `Primary (web):  ${primary || 'none — check deploy log'}`,
+        ``,
+        `Next: call dailey_deploy_status with project_id=${project_id} to watch progress.`,
+        `      If it fails, call dailey_build_logs with project_id=${project_id} for full output.`,
       ].join('\n'));
     },
   );
