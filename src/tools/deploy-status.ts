@@ -103,11 +103,21 @@ export function registerDeployStatusTools(server: McpServer) {
         lines.push(`Branch:      ${status.branch || 'main'}`);
         lines.push(`Deployed SHA: ${status.current_sha || 'never'}`);
         lines.push(`Deployed at: ${status.deployed_at || 'never'}`);
-        lines.push(`Latest SHA:  ${status.latest_sha || 'unknown'}`);
+        // Only show Latest SHA when the upstream lookup actually returned
+        // something. Emitting "Latest SHA: unknown" on every healthy project
+        // is noise that implies something is broken (it's almost always just
+        // that the GH token hasn't been connected, or there's no activity).
+        if (status.latest_sha) {
+          lines.push(`Latest SHA:  ${status.latest_sha}`);
+        }
         if (status.latest_message) {
           lines.push(`Latest msg:  ${status.latest_message}`);
         }
-        lines.push(`New version: ${status.has_new_version ? `yes (${status.new_commits || '?'} new commits)` : 'no'}`);
+        // Only show New version when we actually have a Latest SHA to
+        // compare against — otherwise the "no" is meaningless.
+        if (status.latest_sha) {
+          lines.push(`New version: ${status.has_new_version ? `yes (${status.new_commits || '?'} new commits)` : 'no'}`);
+        }
         lines.push(`Building:    ${status.is_building ? 'yes' : 'no'}`);
         lines.push(`Can deploy:  ${status.can_deploy ? 'yes' : 'no'}`);
       }

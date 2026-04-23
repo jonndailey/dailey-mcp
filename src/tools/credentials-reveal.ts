@@ -25,7 +25,13 @@ export function registerCredentialRevealTools(server: McpServer) {
         { key, password: pw },
       );
       if (!res.ok) return textResult(formatError(res));
-      return textResult(`${res.data.key}: ${res.data.value}`);
+      return textResult([
+        `${res.data.key}: ${res.data.value}`,
+        '',
+        '⚠ This secret was just emitted into a chat/log session. If the reader',
+        '  is untrusted (logs, transcripts shared with third parties, AI chat',
+        '  histories), rotate this value now via dailey_env_vars set.',
+      ].join('\n'));
     },
   );
 }

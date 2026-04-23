@@ -5,6 +5,7 @@ import { apiRequest, formatError, textResult } from '../api.js';
 interface Project {
   id: string;
   name: string;
+  slug?: string;
   status?: string;
   repo_url?: string;
   branch?: string;
@@ -28,15 +29,18 @@ export function registerProjectTools(server: McpServer) {
         return textResult('No projects found.');
       }
 
+      // Include slug — when multiple projects share a name (common with
+      // template-generated repos or duplicated test projects) the slug is
+      // the disambiguator callers need to pick the right project_id.
       const lines = [
         `Projects (${projects.length})`,
-        `${'ID'.padEnd(38)} ${'Name'.padEnd(24)} ${'Status'.padEnd(12)} Replicas`,
-        '─'.repeat(90),
+        `${'ID'.padEnd(38)} ${'Name'.padEnd(22)} ${'Slug'.padEnd(24)} ${'Status'.padEnd(10)} Replicas`,
+        '─'.repeat(110),
       ];
 
       for (const p of projects) {
         lines.push(
-          `${(p.id || '').padEnd(38)} ${(p.name || '').padEnd(24)} ${(p.status || 'unknown').padEnd(12)} ${p.replicas ?? '-'}`,
+          `${(p.id || '').padEnd(38)} ${(p.name || '').padEnd(22)} ${(p.slug || '').padEnd(24)} ${(p.status || 'unknown').padEnd(10)} ${p.replicas ?? '-'}`,
         );
       }
 

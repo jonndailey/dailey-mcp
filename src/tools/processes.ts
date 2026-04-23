@@ -40,7 +40,7 @@ interface ProcessMetricsResponse {
 export function registerProcessTools(server: McpServer) {
   server.tool(
     'dailey_processes',
-    'List processes defined in a project (from dailey.yaml). Shows web/worker/release processes with resource limits and status.',
+    'List processes defined in a project. For multi-process projects with a dailey.yaml manifest, returns each declared process (web/worker/release) with resource limits and status. For single-container projects (most Dailey OS projects), returns an empty list — use dailey_project_info and dailey_scale for resource management in that case.',
     { project_id: z.string().describe('The project ID') },
     async ({ project_id }) => {
       const res = await apiRequest<{ processes: Process[] }>('GET', `/projects/${project_id}/processes`);
@@ -48,7 +48,17 @@ export function registerProcessTools(server: McpServer) {
 
       const procs = res.data.processes || [];
       if (procs.length === 0) {
-        return textResult('No processes defined. This project runs as a single process.');
+        return textResult([
+          'No processes manifest (dailey.yaml) found — this is a single-container project.',
+          '',
+          'For single-container projects:',
+          '  - dailey_project_info to see current replicas/CPU/memory',
+          '  - dailey_scale to change replicas',
+          '  - dailey_app_logs to tail runtime logs',
+          '  - dailey_app_restart to roll the deployment',
+          '',
+          'dailey_processes/dailey_process_* are only meaningful when a repo ships a dailey.yaml declaring multiple processes.',
+        ].join('\n'));
       }
 
       const lines = [
