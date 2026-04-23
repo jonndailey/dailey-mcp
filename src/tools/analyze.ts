@@ -72,9 +72,12 @@ export function registerAnalyzeTools(server: McpServer) {
         lines.push('Tip: this project will be deployed via dailey_deploy_multi.');
       }
 
-      if (d.estimates) {
+      if (d.estimates && (d.estimates.pull_time_seconds != null || d.estimates.deploy_time_seconds != null)) {
+        const parts: string[] = [];
+        if (d.estimates.pull_time_seconds != null) parts.push(`pull ~${d.estimates.pull_time_seconds}s`);
+        if (d.estimates.deploy_time_seconds != null) parts.push(`deploy ~${d.estimates.deploy_time_seconds}s`);
         lines.push('');
-        lines.push(`Estimates:  pull ~${d.estimates.pull_time_seconds}s, deploy ~${d.estimates.deploy_time_seconds}s`);
+        lines.push(`Estimates:  ${parts.join(', ')}`);
       }
 
       if (d.recommendations?.length) {
@@ -89,7 +92,14 @@ export function registerAnalyzeTools(server: McpServer) {
         for (const issue of d.issues) lines.push(`  ✗ ${issue}`);
       } else {
         lines.push('');
-        lines.push('✓ Ready to deploy via dailey_create_project + dailey_deploy_multi, or dailey_run_image.');
+        const isMulti = (d.services_manifest?.entries?.length || 0) > 0;
+        if (isMulti) {
+          lines.push('✓ Ready to deploy — use dailey_deploy_bundle (one call, atomic) for this repo.');
+        } else if (d._isDockerImage) {
+          lines.push('✓ Ready to deploy — use dailey_run_image for this Docker image.');
+        } else {
+          lines.push('✓ Ready to deploy — use dailey_deploy_bundle (one call: create + env + deploy).');
+        }
       }
 
       return textResult(lines.join('\n'));

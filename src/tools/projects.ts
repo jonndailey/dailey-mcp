@@ -137,7 +137,7 @@ export function registerProjectTools(server: McpServer) {
 
         const manifest = analyzeRes.data.services_manifest;
         if (!manifest?.entries?.length) {
-          return textResult('No multi-service manifest found. Use dailey_deploy instead for single-container projects.');
+          return textResult('No multi-service manifest found. For single-container projects use dailey_deploy_bundle (creates + deploys in one call), or dailey_deploy with an existing project_id to redeploy.');
         }
         services = manifest.entries.filter((e: any) => e.type === 'managed' || e.type === 'app_service');
       }
@@ -173,7 +173,7 @@ export function registerProjectTools(server: McpServer) {
 
   server.tool(
     'dailey_create_project',
-    'Create a new project',
+    'Create a project row AND auto-queue the first build. Prefer dailey_deploy_bundle when you also need env vars, service links, or a custom domain — it does create + configure + deploy in a single call. Use this tool only for the bare "just create + build" case.',
     {
       name: z.string().describe('Project name'),
       repo_url: z.string().describe('Git repository URL'),
@@ -185,7 +185,7 @@ export function registerProjectTools(server: McpServer) {
       if (branch) body.branch = branch;
       if (needs_database !== undefined) body.needs_database = needs_database;
 
-      const res = await apiRequest<Project>('POST', '/projects', body);
+      const res = await apiRequest<Project & { build_id?: string }>('POST', '/projects', body);
       if (!res.ok) return textResult(formatError(res));
 
       const p = res.data;
@@ -197,10 +197,39 @@ export function registerProjectTools(server: McpServer) {
           `Name:     ${p.name}`,
           `Status:   ${p.status || 'pending'}`,
           `Repo:     ${p.repo_url}`,
+          ...(p.build_id ? [`Build:    ${p.build_id} (auto-queued — watch with dailey_deploy_status)`] : []),
           `Branch:   ${p.branch || 'main'}`,
           `Database: ${p.needs_database ? 'yes' : 'no'}`,
         ].join('\n'),
       );
+    },
+  );
+
+  server.tool(
+    'dailey_deploy',
+    'Trigger a build + deploy for an existing single-container project. Use this to redeploy a project that already exists (e.g., after pushing new commits to the repo). For multi-service projects use dailey_deploy_multi. To create AND deploy a new project, use dailey_deploy_bundle.',
+    {
+      project_id: z.string().describe('The project ID to deploy'),
+      commit_sha: z.string().optional().describe('Specific commit SHA to deploy (default: HEAD of the configured branch)'),
+    },
+    async ({ project_id, commit_sha }) => {
+      const res = await apiRequest<any>('POST', '/deploys', {
+        project_id,
+        commit_sha: commit_sha || 'HEAD',
+      });
+      if (!res.ok) return textResult(formatError(res));
+
+      const d = res.data || {};
+      return textResult([
+        `Deploy triggered!`,
+        ``,
+        `Project:   ${project_id}`,
+        `Build ID:  ${d.build_id || '(unknown)'}`,
+        `Commit:    ${commit_sha || 'HEAD'}`,
+        ``,
+        `Next: dailey_deploy_status with project_id=${project_id} to watch progress.`,
+        `      dailey_build_logs with project_id=${project_id} if it fails.`,
+      ].join('\n'));
     },
   );
 
