@@ -10,7 +10,7 @@ function shellQuote(s: string): string {
 export function registerCliTools(server: McpServer): void {
   server.tool(
     'dailey_cli_suggest_import',
-    "Construct a correct `dailey db import` CLI invocation from semantic inputs. Read-only: does no I/O, makes no API calls. Pure string construction. The agent should run the returned command via its host shell (with user approval). A dry-run must precede any commit; the returned command defaults to --dry-run. Before suggesting, invoke `dailey_db_schema` to verify the payload shape fits the target table. For writes, this tool is the path — `dailey_db_recall` is read-only.",
+    "DEPRECATED — prefer `dailey_db_import` which executes end-to-end without dropping to the host shell. This tool remains for environments where the MCP client can't upload inline data (payload > ~256 KB) and the agent would rather suggest a local `dailey db import` command the user runs themselves. Pure string construction, no I/O. Defaults to --dry-run.",
     {
       project: z.string().describe('Project slug or id (e.g. "wordgym")'),
       table: z.string().describe('Target table name'),
