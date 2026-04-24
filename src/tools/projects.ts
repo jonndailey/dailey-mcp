@@ -239,9 +239,44 @@ export function registerProjectTools(server: McpServer) {
 
   server.tool(
     'dailey_delete_project',
-    'Delete a project (irreversible)',
-    { project_id: z.string().describe('The project ID to delete') },
-    async ({ project_id }) => {
+    'Delete a project — IRREVERSIBLE. Tears down Deployment, Service, Ingress, Secrets, DB, R2 prefix, DNS. Requires confirm=true to actually delete; calling without confirm returns the project\'s current state + a summary of what would be destroyed so you can verify before committing. (Pitfall #15)',
+    {
+      project_id: z.string().describe('The project ID to delete'),
+      confirm: z.boolean().optional().describe('MUST be true to actually delete. Default false — returns preview only.'),
+    },
+    async ({ project_id, confirm }) => {
+      if (!confirm) {
+        // Preview what would be deleted.
+        const info = await apiRequest<any>('GET', `/projects/${project_id}`);
+        if (!info.ok) return textResult(formatError(info));
+        const p = info.data;
+        const lines = [
+          `⚠ DELETE PREVIEW — not executed. Re-call with confirm=true to destroy.`,
+          '',
+          `Project:    ${p.name} (${p.slug})`,
+          `ID:         ${p.id}`,
+          `Status:     ${p.status}`,
+          `Namespace:  ${p.namespace || '-'}`,
+          `Database:   ${p.database_name ? `${p.database_name} (${p.database_type})` : 'none'}`,
+          `URL:        ${p.url || 'none'}`,
+          `Replicas:   ${p.replicas ?? '-'}`,
+          '',
+          'Will be destroyed:',
+          '  • k8s Deployment + Service + Ingress in namespace',
+          '  • All Secrets (db creds, env, storage creds if project-local)',
+          '  • Postgres/MySQL database + scoped role (if managed DB)',
+          '  • R2 storage prefix for this project (if storage-enabled)',
+          '  • DNS record at <slug>.dailey.cloud',
+          '  • Customer registry image tags (not shared baseline images)',
+          '',
+          'Will survive:',
+          '  • Audit logs, billing usage records (history)',
+          '  • Nightly DB backups — retained per retention policy',
+          '',
+          `To delete: dailey_delete_project(project_id="${project_id}", confirm=true)`,
+        ];
+        return textResult(lines.join('\n'));
+      }
       const res = await apiRequest('DELETE', `/projects/${project_id}`);
       if (!res.ok) return textResult(formatError(res));
       return textResult(`Project ${project_id} deleted successfully.`);
