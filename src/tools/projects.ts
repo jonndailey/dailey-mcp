@@ -65,7 +65,7 @@ export function registerProjectTools(server: McpServer) {
         `Repo:       ${p.repo_url || 'none'}`,
         `Branch:     ${p.branch || 'main'}`,
         `Replicas:   ${p.replicas ?? '-'}`,
-        `Database:   ${p.needs_database ? 'yes' : 'no'}`,
+        `Database:   ${p.database_name ? `${p.database_name} (${p.database_type || 'mysql'})` : 'none'}`,
         `URL:        ${p.url || 'none'}`,
         `Created:    ${p.created_at || 'unknown'}`,
       ];
