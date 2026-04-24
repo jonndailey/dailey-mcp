@@ -14,6 +14,8 @@ import { registerEnvTools } from './tools/env.js';
 import { registerDomainTools } from './tools/domains.js';
 import { registerDbTools } from './tools/db.js';
 import { registerExecRunTools } from './tools/exec-run.js';
+import { registerProjectTransferTools } from './tools/project-transfer.js';
+import { registerAdminTools } from './tools/admin.js';
 import { registerUsageTools } from './tools/usage.js';
 import { registerBillingTools } from './tools/billing.js';
 import { registerPlatformTools } from './tools/platform.js';
@@ -127,6 +129,10 @@ registerBackupTools(server);
 
 // Runtime operations — exec into a pod, run one-off jobs
 registerExecRunTools(server);
+
+// Admin-only — customer onboarding, project transfer
+registerAdminTools(server);
+registerProjectTransferTools(server);
 
 // CLI assist
 registerCliTools(server);

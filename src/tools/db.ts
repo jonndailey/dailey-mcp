@@ -286,6 +286,57 @@ export function registerDbTools(server: McpServer) {
   );
 
   server.tool(
+    'dailey_db_import',
+    'Bulk-insert or upsert rows into a project table. Two-phase commit: call first with dry_run=true to validate + get a confirm_token + row counts; call again with confirm_token to commit. For JSON, pass an array of row objects as a JSON string in `payload`. For CSV, pass the raw CSV text with a header row. `mode=upsert` requires `conflict_keys`. The dry_run phase parses, validates types, counts insert/update/error rows, and returns a short-lived token without writing anything.',
+    {
+      project_id: z.string().describe('The project ID'),
+      table: z.string().describe('Target table name in the project database'),
+      mode: z.enum(['insert', 'upsert']).describe('insert = fail on duplicate key; upsert = update on conflict'),
+      format: z.enum(['json', 'csv']).describe('Payload format'),
+      payload: z.string().describe('Inline data. JSON: stringified array of row objects, e.g. `[{"email":"a@b.com","name":"A"}]`. CSV: raw CSV text with a header row on line 1.'),
+      conflict_keys: z.array(z.string()).optional().describe('Required for upsert — columns that identify a row for conflict (e.g. ["email"] or composite ["tenant_id","external_id"])'),
+      dry_run: z.boolean().optional().describe('Set true on the first call to validate without writing. Response includes confirm_token to pass to the second call.'),
+      confirm_token: z.string().optional().describe('Token from a prior dry_run response. Required on the commit call. Single-use.'),
+      allow_extra_columns: z.boolean().optional().describe('If true, payload columns not present in the table schema are silently dropped. Default false.'),
+      batch_size: z.number().int().optional().describe('Rows per write batch (default 500)'),
+    },
+    async ({ project_id, table, mode, format, payload, conflict_keys, dry_run, confirm_token, allow_extra_columns, batch_size }) => {
+      if (!dry_run && !confirm_token) {
+        return textResult('Must pass either dry_run=true (validate) or confirm_token (commit). Two-phase commit is required.');
+      }
+      if (mode === 'upsert' && (!conflict_keys || conflict_keys.length === 0)) {
+        return textResult('mode=upsert requires conflict_keys, e.g. ["email"].');
+      }
+      const body: any = { table, mode, format, payload };
+      if (conflict_keys?.length) body.conflict_keys = conflict_keys;
+      if (dry_run) body.dry_run = true;
+      if (confirm_token) body.confirm = confirm_token;
+      if (allow_extra_columns) body.allow_extra_columns = true;
+      if (batch_size) body.batch_size = batch_size;
+
+      const res = await apiRequest<any>('POST', `/projects/${project_id}/database/import`, body);
+      if (!res.ok) return textResult(formatError(res));
+
+      const d = res.data;
+      const lines: string[] = [];
+      if (d.dry_run) {
+        lines.push(`Dry run: ${d.insert_count ?? 0} inserts, ${d.update_count ?? 0} updates, ${d.error_count ?? 0} errors`);
+        if (d.confirm_token) lines.push(`confirm_token: ${d.confirm_token}`);
+        if (d.expires_at) lines.push(`Expires: ${d.expires_at}`);
+        if (d.errors?.length) {
+          lines.push('', 'Row errors (first 10):');
+          for (const e of d.errors.slice(0, 10)) lines.push(`  ✗ row ${e.row ?? '?'}: ${e.error || JSON.stringify(e)}`);
+        }
+        lines.push('', 'If this looks right, re-call with confirm_token.');
+      } else {
+        lines.push(`Committed: ${d.inserted ?? 0} inserted, ${d.updated ?? 0} updated, ${d.errors ?? 0} errors`);
+        if (d.duration_ms) lines.push(`Duration:  ${d.duration_ms}ms`);
+      }
+      return textResult(lines.join('\n'));
+    },
+  );
+
+  server.tool(
     'dailey_db_exec',
     'Execute write SQL (DDL/DML) against a project database — CREATE TABLE, ALTER, INSERT, UPDATE, etc. Runs all statements in a single transaction as a short-lived exec user, then drops the user. Works for both MySQL and Postgres (engine auto-detected). Refuses forbidden statements (DROP DATABASE, GRANT, CREATE USER, ATTACH, etc.). If the SQL contains destructive statements (DROP TABLE, TRUNCATE, DELETE without WHERE), set confirm=true to acknowledge. The endpoint writes every invocation to the exec_audit table. After running DDL, you may want to call dailey_db_schema to see the new shape.',
     {

@@ -1,6 +1,6 @@
 {
   "name": "@daileyos/mcp-server",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "description": "Dailey OS MCP server for Claude Code and AI assistants",
   "type": "module",
   "main": "dist/index.js",
