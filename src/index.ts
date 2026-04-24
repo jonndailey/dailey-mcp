@@ -13,6 +13,7 @@ import { registerScaleTools } from './tools/scale.js';
 import { registerEnvTools } from './tools/env.js';
 import { registerDomainTools } from './tools/domains.js';
 import { registerDbTools } from './tools/db.js';
+import { registerExecRunTools } from './tools/exec-run.js';
 import { registerUsageTools } from './tools/usage.js';
 import { registerBillingTools } from './tools/billing.js';
 import { registerPlatformTools } from './tools/platform.js';
@@ -123,6 +124,9 @@ registerCredentialRevealTools(server);
 registerDbTools(server);
 registerStorageTools(server);
 registerBackupTools(server);
+
+// Runtime operations — exec into a pod, run one-off jobs
+registerExecRunTools(server);
 
 // CLI assist
 registerCliTools(server);

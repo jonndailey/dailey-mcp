@@ -284,4 +284,57 @@ export function registerDbTools(server: McpServer) {
       return textResult(lines.join('\n'));
     },
   );
+
+  server.tool(
+    'dailey_db_exec',
+    'Execute write SQL (DDL/DML) against a project database — CREATE TABLE, ALTER, INSERT, UPDATE, etc. Runs all statements in a single transaction as a short-lived exec user, then drops the user. Works for both MySQL and Postgres (engine auto-detected). Refuses forbidden statements (DROP DATABASE, GRANT, CREATE USER, ATTACH, etc.). If the SQL contains destructive statements (DROP TABLE, TRUNCATE, DELETE without WHERE), set confirm=true to acknowledge. The endpoint writes every invocation to the exec_audit table. After running DDL, you may want to call dailey_db_schema to see the new shape.',
+    {
+      project_id: z.string().describe('The project ID'),
+      sql: z.string().describe('One or more SQL statements separated by ";". Can include CREATE/ALTER/DROP TABLE, INSERT, UPDATE, DELETE, CREATE INDEX, etc. Transactions are automatic.'),
+      confirm: z.boolean().optional().describe('Required (true) when sql contains destructive statements like DROP TABLE, TRUNCATE, or DELETE without WHERE. First call without confirm to see the destructive list; re-call with confirm=true to execute.'),
+    },
+    async ({ project_id, sql, confirm }) => {
+      const res = await apiRequest<any>('POST', `/projects/${project_id}/database/exec`, {
+        sql,
+        confirm: !!confirm,
+      });
+
+      if (!res.ok) {
+        const body: any = res.data;
+        const lines = [formatError(res)];
+        if (body?.forbidden?.length) {
+          lines.push('', 'Forbidden statements (will never be allowed):');
+          for (const f of body.forbidden) lines.push(`  • ${f}`);
+        }
+        if (body?.destructive?.length) {
+          lines.push('', 'Destructive statements detected — re-call with confirm=true to proceed:');
+          for (const d of body.destructive) lines.push(`  • ${d}`);
+        }
+        return textResult(lines.join('\n'));
+      }
+
+      const d = res.data;
+      const lines = [
+        `Execution: ${d.committed ? 'COMMITTED ✓' : (d.phase || 'unknown')}`,
+        `Engine:   ${d.engine || 'unknown'}`,
+        `Database: ${d.database || 'unknown'}`,
+        `Statements: ${d.statement_count ?? (d.results?.length ?? 0)}`,
+      ];
+      if (d.destructive?.length) {
+        lines.push('');
+        lines.push('Destructive statements applied:');
+        for (const s of d.destructive) lines.push(`  • ${s}`);
+      }
+      if (d.results?.length) {
+        lines.push('');
+        lines.push('Per-statement results:');
+        for (const r of d.results) {
+          if (typeof r.rows === 'number') lines.push(`  ✓ ${r.rows} row(s) returned`);
+          else if (typeof r.affected === 'number') lines.push(`  ✓ ${r.affected} row(s) affected`);
+          else lines.push(`  ✓ ok`);
+        }
+      }
+      return textResult(lines.join('\n'));
+    },
+  );
 }

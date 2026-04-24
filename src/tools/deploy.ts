@@ -78,4 +78,24 @@ export function registerDeployTools(server: McpServer) {
       return textResult(`Rollback initiated for project ${project_id} to build ${build_id}.`);
     },
   );
+
+  server.tool(
+    'dailey_deploy_rate',
+    'Check the deploy rate limit status for a project — deploys used vs. limit this hour, remaining, and minutes until the window resets. Worth calling before kicking off dailey_deploy in a debug loop or when iterating quickly, so you don\'t hit the hourly cap unexpectedly.',
+    { project_id: z.string().describe('The project ID') },
+    async ({ project_id }) => {
+      const res = await apiRequest<any>('GET', `/projects/${project_id}/deploy-rate`);
+      if (!res.ok) return textResult(formatError(res));
+      const d = res.data;
+      const pct = d.deploys_limit > 0 ? Math.round((d.deploys_used / d.deploys_limit) * 100) : 0;
+      const lines = [
+        `Deploy rate status`,
+        `Used:      ${d.deploys_used} / ${d.deploys_limit} (${pct}%)`,
+        `Remaining: ${d.deploys_remaining}`,
+        `Resets in: ${d.resets_in_minutes} minute(s)`,
+      ];
+      if (pct >= 90) lines.push('', '⚠ approaching rate limit — consider waiting');
+      return textResult(lines.join('\n'));
+    },
+  );
 }
