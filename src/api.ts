@@ -80,13 +80,85 @@ export async function apiRequest<T = unknown>(
 
 export function formatError(res: ApiResponse): string {
   const data = res.data;
+  let baseMessage: string;
   if (typeof data === 'object' && data !== null && 'error' in data) {
-    return `Error (${res.status}): ${(data as { error: string }).error}`;
+    baseMessage = `Error (${res.status}): ${(data as { error: string }).error}`;
+  } else if (typeof data === 'object' && data !== null && 'message' in data) {
+    baseMessage = `Error (${res.status}): ${(data as { message: string }).message}`;
+  } else {
+    baseMessage = `Error (${res.status}): ${JSON.stringify(data)}`;
   }
-  if (typeof data === 'object' && data !== null && 'message' in data) {
-    return `Error (${res.status}): ${(data as { message: string }).message}`;
+  const hint = remediationFor(res.status, data);
+  return hint ? `${baseMessage}\n→ Remediation: ${hint}` : baseMessage;
+}
+
+/**
+ * Remediation hints for common error patterns. Customer-feedback Scott Waters
+ * platform-wishlist 2026-04-25, section 8: "MCP tool errors should include
+ * remediation hints. The agent can show this verbatim to the user."
+ *
+ * Match order matters — most-specific first. Returns null when nothing maps.
+ */
+export function remediationFor(status: number, data: unknown): string | null {
+  // Extract a searchable message regardless of the body shape.
+  const messageParts: string[] = [];
+  if (typeof data === 'string') messageParts.push(data);
+  if (typeof data === 'object' && data !== null) {
+    const d = data as Record<string, unknown>;
+    if (typeof d.error === 'string') messageParts.push(d.error);
+    if (typeof d.message === 'string') messageParts.push(d.message);
+    if (typeof d.detail === 'string') messageParts.push(d.detail);
+    if (typeof d.code === 'string') messageParts.push(d.code);
   }
-  return `Error (${res.status}): ${JSON.stringify(data)}`;
+  const haystack = messageParts.join(' ').toLowerCase();
+
+  // ── Pattern-driven hints (more specific) — checked first so that an
+  //    AWS-style "SignatureDoesNotMatch" carrying a 403 status maps to the
+  //    storage-creds advice, not the generic "token expired" advice. ──
+  if (haystack.includes('alreadyexists') && haystack.includes('registry')) {
+    return 'Usually transient — retry `dailey_deploy`. The build worker also auto-retries this now.';
+  }
+  if (haystack.includes('alreadyexists') && (haystack.includes('push') || haystack.includes('blob'))) {
+    return 'Usually transient — retry `dailey_deploy`. The build worker also auto-retries this now.';
+  }
+  if (haystack.includes('signaturedoesnotmatch')) {
+    return 'Storage creds may be stale; run `dailey_storage_refresh` or wait for the 24h auto-refresh.';
+  }
+  if (haystack.includes('containercreating') && (haystack.includes('4 min') || haystack.includes('stuck'))) {
+    return 'Image pull or PVC mount; check `dailey_app_logs`.';
+  }
+  if (haystack.includes('crashloopbackoff')) {
+    return 'App is failing on startup; check `dailey_app_logs` for the error, then redeploy.';
+  }
+  if (haystack.includes('enotfound') || haystack.includes('econnrefused') || haystack.includes('etimedout')) {
+    return 'Dailey API may be temporarily unreachable; retry in a minute.';
+  }
+
+  // ── Status-code-driven hints (generic fallback) ─────────────────────
+  if (status === 423) {
+    return 'Account locked. Wait the duration in the message; the platform now sends Retry-After.';
+  }
+  if (status === 429) {
+    return 'Rate limited. Wait the duration; CLI/API auto-honor Retry-After.';
+  }
+  if (status === 401 || status === 403) {
+    return 'Token expired or scope mismatch. Run `dailey login` (CLI) or refresh DAILEY_API_TOKEN.';
+  }
+  if (status === 502 || status === 503 || status === 504) {
+    return 'Dailey API may be temporarily unreachable; retry in a minute.';
+  }
+
+  return null;
+}
+
+/**
+ * Wrap a thrown error with remediation hints when possible. Used for fetch-
+ * level failures (DNS, connection refused) that never reach formatError.
+ */
+export function formatThrownError(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err);
+  const hint = remediationFor(0, message);
+  return hint ? `Error: ${message}\n→ Remediation: ${hint}` : `Error: ${message}`;
 }
 
 export function textResult(text: string) {
