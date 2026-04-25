@@ -30,6 +30,7 @@ import { registerCredentialRevealTools } from './tools/credentials-reveal.js';
 import { registerAnalyzeTools } from './tools/analyze.js';
 import { registerCliTools } from './tools/cli.js';
 import { registerBundleTools } from './tools/bundle.js';
+import { registerDiagnoseTools } from './tools/diagnose.js';
 
 function preflight(): void {
   const isInteractive = Boolean(process.stdin.isTTY);
@@ -139,6 +140,9 @@ registerCliTools(server);
 
 // Atomic deploy bundle
 registerBundleTools(server);
+
+// One-stop health check — first tool to reach for when something is broken
+registerDiagnoseTools(server);
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
