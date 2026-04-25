@@ -64,7 +64,7 @@ interface PresignedDownloadResponse {
 export function registerStorageTools(server: McpServer) {
   server.tool(
     'dailey_storage_info',
-    'Show the project-scoped storage binding, usage, and presign model',
+    'Returns the project\'s storage binding (bucket, prefix, region) AND the SDK env-var convention for server-side integration. For server-side apps in your Dailey-deployed pod: install an S3 SDK and use the auto-injected S3_* env vars (S3_ENDPOINT, S3_REGION, S3_BUCKET_NAME, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, S3_SESSION_TOKEN, S3_KEY_PREFIX). For browser-side flows: use dailey_storage_presign_upload/download to mint URLs.',
     { project_id: z.string().describe('The project ID') },
     async ({ project_id }) => {
       const res = await apiRequest<StorageInfoResponse>('GET', `/projects/${project_id}/storage`);
@@ -88,7 +88,30 @@ export function registerStorageTools(server: McpServer) {
         `URL TTL:     ${data.binding.limits.signed_url_ttl_seconds}s`,
       ];
 
-      if (data.next_step) {
+      // Render the new integration_paths block when the API surfaces it.
+      // Older customer-api responses still set next_step; fall back to that
+      // verbatim so this tool keeps working during the rolling deploy.
+      const ip = (data as any).integration_paths;
+      if (ip) {
+        lines.push('');
+        lines.push('Integration paths:');
+        if (ip.server_side) {
+          lines.push(`  Server-side (deployed app): ${ip.server_side.summary}`);
+          if (Array.isArray(ip.server_side.env_vars)) {
+            lines.push(`    Auto-injected env vars: ${ip.server_side.env_vars.join(', ')}`);
+          }
+          if (ip.server_side.example) {
+            lines.push(`    Example: ${ip.server_side.example}`);
+          }
+        }
+        if (ip.browser_side) {
+          lines.push(`  Browser-side (user's machine): ${ip.browser_side.summary}`);
+        }
+        const docsUrl = (data as any).docs_url;
+        if (docsUrl) {
+          lines.push(`  Docs: ${docsUrl}`);
+        }
+      } else if (data.next_step) {
         lines.push('');
         lines.push(`Next Step: ${data.next_step}`);
       }
@@ -148,7 +171,7 @@ export function registerStorageTools(server: McpServer) {
 
   server.tool(
     'dailey_storage_presign_upload',
-    'Create a presigned upload URL for an object in a project bucket',
+    'For BROWSER-side flows. Server-side apps deployed on Dailey should instead use the S3 SDK with the auto-injected S3_* env vars (see dailey_storage_info). Creates a presigned upload URL for an object in a project bucket.',
     {
       project_id: z.string().describe('The project ID'),
       key: z.string().describe('The object key to upload'),
@@ -184,7 +207,7 @@ export function registerStorageTools(server: McpServer) {
 
   server.tool(
     'dailey_storage_presign_download',
-    'Create a presigned download URL for an object in a project bucket',
+    'For BROWSER-side flows. Server-side apps deployed on Dailey should instead use the S3 SDK with the auto-injected S3_* env vars (see dailey_storage_info). Creates a presigned download URL for an object in a project bucket.',
     {
       project_id: z.string().describe('The project ID'),
       key: z.string().describe('The object key to download'),
