@@ -79,6 +79,18 @@ export async function apiRequest<T = unknown>(
 }
 
 export function formatError(res: ApiResponse): string {
+  // 401/403 always returns a structured auth error object as JSON text so MCP
+  // clients (and agents reading tool output) get a machine-readable signal with
+  // a clear remediation path rather than a generic "Error (401): ..." string.
+  if (res.status === 401 || res.status === 403) {
+    return JSON.stringify({
+      error_code: 'DAILEY_AUTH_REQUIRED',
+      message: 'Not authenticated',
+      remediation: 'Run `dailey auth setup` in your terminal',
+      help_url: 'https://docs.dailey.cloud/auth',
+    }, null, 2);
+  }
+
   const data = res.data;
   let baseMessage: string;
   if (typeof data === 'object' && data !== null && 'error' in data) {
