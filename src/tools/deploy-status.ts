@@ -31,6 +31,8 @@ interface BuildRow {
   started_at?: string;
   finished_at?: string;
   commit_sha?: string;
+  build_error_summary?: string;
+  build_error_fix?: string;
 }
 
 const STAGE_EMOJI_RE = /^[⚙📦🚀✅🎉❌]/;
@@ -135,17 +137,32 @@ export function registerDeployStatusTools(server: McpServer) {
         // Fetch build detail (includes log) for progress + failure info.
         const buildRes = await apiRequest<BuildRow>('GET', `/builds/${latest.id}`);
         if (buildRes.ok) {
-          const log = buildRes.data.log || '';
+          const buildData = buildRes.data;
+          const log = buildData.log || '';
           const progress = latestProgressLine(log);
           if (progress) {
             lines.push(`  Progress:  ${progress}`);
           }
           if (latest.status === 'failed') {
-            const guidance = getFailureGuidance(log);
-            if (guidance) {
+            // Prefer the structured diagnosis fields surfaced by the deploy-service
+            // (build_error_summary / build_error_fix) over the local pattern matching.
+            // These are synthesised from the stored log by the deploy-service and are
+            // more accurate than re-running regexes against a potentially truncated log.
+            if (buildData.build_error_summary) {
               lines.push('');
-              lines.push(`❌ Failure reason: ${guidance.reason}`);
-              lines.push(`   How to fix:    ${guidance.fix}`);
+              lines.push(`❌ BUILD FAILED`);
+              lines.push(`   Error:     ${buildData.build_error_summary}`);
+              if (buildData.build_error_fix) {
+                lines.push(`   Fix:       ${buildData.build_error_fix}`);
+              }
+            } else {
+              // Fall back to local pattern matching if no structured diagnosis
+              const guidance = getFailureGuidance(log);
+              if (guidance) {
+                lines.push('');
+                lines.push(`❌ Failure reason: ${guidance.reason}`);
+                lines.push(`   How to fix:    ${guidance.fix}`);
+              }
             }
             lines.push('');
             lines.push(`Tip: call dailey_build_logs with build_id=${latest.id} for the full build log.`);
