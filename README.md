@@ -8,7 +8,7 @@ Connect any MCP-compliant AI coding agent — Claude Code, OpenCode, Cursor, Win
 
 The server is published to npm as [`@daileyos/mcp-server`](https://www.npmjs.com/package/@daileyos/mcp-server). You don't need to install it manually — your MCP client will `npx` it on demand the first time you use it.
 
-### Quick start — Claude Code
+### Quick start — Claude Code (Mac / Linux)
 
 Add to `~/.claude/settings.json` (or project settings):
 
@@ -19,13 +19,22 @@ Add to `~/.claude/settings.json` (or project settings):
       "command": "npx",
       "args": ["-y", "@daileyos/mcp-server"],
       "env": {
-        "DAILEY_EMAIL": "you@example.com",
-        "DAILEY_PASSWORD": "your-password"
+        "DAILEY_API_TOKEN": "your-token"
       }
     }
   }
 }
 ```
+
+### Quick start — Claude Code (Windows)
+
+On Windows, Claude Code reads MCP servers from `~\.claude.json` — **not** from `settings.json`. The `mcpServers` key in `settings.json` is silently ignored. Use the CLI instead:
+
+```cmd
+claude mcp add --scope user --env DAILEY_API_TOKEN=your-token -- dailey-os npx -y @daileyos/mcp-server
+```
+
+Restart Claude Code, then run `/mcp` to confirm `dailey-os` is connected.
 
 ### Quick start — OpenCode (free)
 
