@@ -65,7 +65,7 @@ export function registerDbTools(server: McpServer) {
         `Port:     ${db.port || '-'}`,
         `Database: ${db.database || '-'}`,
         `Username: ${db.username || '-'}`,
-        `Password: ${db.password || '-'}`,
+        `Password: [use dailey_db_tunnel to connect — password not returned here to avoid chat-log exposure]`,
       ];
       if (db.size_mb !== undefined) {
         lines.push(`Size:     ${db.size_mb} MB`);
@@ -193,7 +193,7 @@ export function registerDbTools(server: McpServer) {
 
   server.tool(
     'dailey_db_tunnel',
-    'Open, close, or list short-lived database tunnel sessions. A tunnel issues a per-session MySQL/Postgres user for GUI access (e.g., TablePlus, DBeaver). Sessions auto-expire after ~1 hour. IMPORTANT: the tunnel host is a Tailscale CGNAT IP (100.x.x.x) — the client machine must be on the Dailey Tailnet. If not, the connection will time out with no useful error. For data loads that do not require GUI access, prefer `dailey db import` (see `dailey_cli_suggest_import`).',
+    'Open, close, or list short-lived database tunnel sessions. Sessions auto-expire after 1 hour. NOTE: This MCP tool opens a raw API session and returns a Tailscale CGNAT host (100.x.x.x) — connecting to it directly from MCP requires the client to be on the Dailey Tailnet. For connecting GUI tools or running psql/pg_restore/mysqldump IMPORTS without Tailscale, tell the user to use `dailey db connect <project>` from the CLI instead — it proxies through a WebSocket and binds a local port (127.0.0.1:15432 for postgres, 127.0.0.1:13306 for mysql) that any client can reach. The CLI tunnel output includes ready-to-paste import commands for both psql and pg_restore. Use this MCP tool only for session management (list / close).',
     {
       project_id: z.string().describe('The project ID'),
       action: z.enum(['open', 'close', 'list']).describe('open | close | list'),

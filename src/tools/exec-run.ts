@@ -5,7 +5,7 @@ import { apiRequest, textResult, formatError } from '../api.js';
 export function registerExecRunTools(server: McpServer) {
   server.tool(
     'dailey_exec',
-    'Run a one-off command inside a running pod for a project (similar to `kubectl exec`). Useful for troubleshooting — inspect files, run `node --version`, `cat /etc/env`, etc. The command is an argv array (not a shell string). Captures up to 1 MB of stdout/stderr and times out at 60s by default (configurable to 300s max). Needs at least one Ready pod. For one-off jobs that run to completion in their own pod (migrations, seeders, backfills) use dailey_run instead — exec attaches to a live pod, run spawns a new Job.',
+    'Run a one-off command inside a running pod for a project (similar to `kubectl exec`). Useful for troubleshooting — inspect files, run `node --version`, check directory contents, etc. The command is an argv array (not a shell string). Captures up to 1 MB of stdout/stderr and times out at 60s by default (configurable to 300s max). Needs at least one Ready pod. For one-off jobs that run to completion in their own pod (migrations, seeders, backfills) use dailey_run instead — exec attaches to a live pod, run spawns a new Job. Avoid running commands that print env vars or secrets (env, printenv) — use dailey_env_vars to inspect config instead.',
     {
       project_id: z.string().describe('The project ID'),
       command: z.array(z.string()).describe('Command as argv array, e.g. ["node","--version"] or ["ls","-la","/app"]. Not a shell string.'),

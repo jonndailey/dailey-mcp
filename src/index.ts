@@ -31,6 +31,8 @@ import { registerAnalyzeTools } from './tools/analyze.js';
 import { registerCliTools } from './tools/cli.js';
 import { registerBundleTools } from './tools/bundle.js';
 import { registerDiagnoseTools } from './tools/diagnose.js';
+import { registerBuddyTools } from './tools/buddy.js';
+import { registerSupportTools } from './tools/support.js';
 
 function preflight(): void {
   const isInteractive = Boolean(process.stdin.isTTY);
@@ -94,8 +96,11 @@ preflight();
 
 const server = new McpServer({
   name: 'dailey-os',
-  version: '1.1.0',
+  version: '1.12.1',
 });
+
+// DOS Buddy — first in list so it surfaces at the top of tool listings
+registerBuddyTools(server);
 
 // Core + identity
 registerAuthTools(server);
@@ -143,6 +148,9 @@ registerBundleTools(server);
 
 // One-stop health check — first tool to reach for when something is broken
 registerDiagnoseTools(server);
+
+// Support — escalate to Dailey OS team
+registerSupportTools(server);
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
