@@ -31,7 +31,6 @@ import { registerAnalyzeTools } from './tools/analyze.js';
 import { registerCliTools } from './tools/cli.js';
 import { registerBundleTools } from './tools/bundle.js';
 import { registerDiagnoseTools } from './tools/diagnose.js';
-import { registerBuddyTools } from './tools/buddy.js';
 import { registerSupportTools } from './tools/support.js';
 
 function writeStream(stream: NodeJS.WriteStream, text: string): Promise<void> {
@@ -104,11 +103,8 @@ await preflight();
 
 const server = new McpServer({
   name: 'dailey-os',
-  version: '1.13.1',
+  version: '1.13.4',
 });
-
-// DOS Buddy — first in list so it surfaces at the top of tool listings
-registerBuddyTools(server);
 
 // Core + identity
 registerAuthTools(server);
