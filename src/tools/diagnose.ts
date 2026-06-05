@@ -32,6 +32,144 @@ interface ProjectListEntry {
 
 const ERROR_LINE_PATTERN = /(error|fatal|panic|exception|uncaught|unhandled)/i;
 
+interface KnownIssue {
+  id: string;
+  name: string;
+  plain_english: string;
+  fix: string;
+  severity: 'fail' | 'warn';
+}
+
+interface PatternRule {
+  pattern: RegExp;
+  issue: KnownIssue;
+}
+
+const KNOWN_PATTERNS: PatternRule[] = [
+  {
+    pattern: /P3009|migrate found failed migrations|applied migration.*is not recorded/i,
+    issue: {
+      id: 'prisma_failed_migration',
+      name: 'Prisma: failed migration in history',
+      plain_english:
+        'Your database has a migration that started but never finished — usually because the app crashed mid-deploy or you restored a dump on top of an existing schema. Prisma refuses to start until it is resolved.',
+      fix: 'Run: dailey db exec <project> "UPDATE _prisma_migrations SET finished_at = started_at, logs = NULL WHERE finished_at IS NULL AND rolled_back_at IS NULL;" --confirm\nThen redeploy: dailey deploy <project>',
+      severity: 'fail',
+    },
+  },
+  {
+    pattern: /PrismaClientInitializationError|prisma\.generate|@prisma\/client did not initialize/i,
+    issue: {
+      id: 'prisma_client_not_generated',
+      name: 'Prisma: client not generated',
+      plain_english:
+        'The Prisma client was not generated during the build step. Your Dockerfile or build command is missing "prisma generate" before "node" starts.',
+      fix: 'Add "npx prisma generate" to your build step. In package.json: "build": "prisma generate && tsc" (or whatever your build command is). Then redeploy: dailey deploy <project>',
+      severity: 'fail',
+    },
+  },
+  {
+    pattern: /exit code 137|OOMKilled|out of memory kill|memory limit exceeded/i,
+    issue: {
+      id: 'oom_killed',
+      name: 'Pod killed: out of memory (OOM)',
+      plain_english:
+        'Your app used more memory than its limit and the platform killed it. The default limit is 512 MB per replica.',
+      fix: 'Check memory usage: dailey usage <project>\nIncrease the limit: dailey resource-config <project> --memory-limit 1024\nOr reduce memory use (Node.js tip: set NODE_OPTIONS="--max-old-space-size=900" in your env vars).',
+      severity: 'fail',
+    },
+  },
+  {
+    pattern: /FATAL ERROR:.*JavaScript heap out of memory|heap out of memory/i,
+    issue: {
+      id: 'node_heap_oom',
+      name: 'Node.js heap out of memory',
+      plain_english:
+        "Your Node.js process ran out of heap space. It didn't hit the container memory limit — the V8 heap limit (default ~512 MB) was hit first.",
+      fix: 'Set NODE_OPTIONS env var: dailey env set <project> NODE_OPTIONS "--max-old-space-size=1024"\nThen redeploy: dailey deploy <project>',
+      severity: 'fail',
+    },
+  },
+  {
+    pattern: /ECONNREFUSED.*(?:3306|5432|27017)|connect ECONNREFUSED.*database|database connection refused/i,
+    issue: {
+      id: 'db_connection_refused',
+      name: 'Database connection refused',
+      plain_english:
+        'Your app tried to connect to the database but got "connection refused." Either the database is not provisioned, or the connection URL is wrong.',
+      fix: 'Check if a database is provisioned: dailey db info <project>\nIf not provisioned: dailey db provision <project> --type mysql (or postgres)\nIf provisioned, verify DATABASE_URL is correct: dailey env list <project>',
+      severity: 'fail',
+    },
+  },
+  {
+    pattern: /EADDRINUSE|address already in use|port.*already in use/i,
+    issue: {
+      id: 'port_in_use',
+      name: 'Port already in use',
+      plain_english:
+        "Your app tried to listen on a port that's already occupied. On Dailey OS you must listen on the PORT env var (always 3000) — never hardcode a port number.",
+      fix: 'Update your app to bind to process.env.PORT (not a hardcoded number). Example: app.listen(process.env.PORT || 3000)\nThen redeploy: dailey deploy <project>',
+      severity: 'fail',
+    },
+  },
+  {
+    pattern: /Cannot find module|MODULE_NOT_FOUND|Error: Cannot find|module not found/i,
+    issue: {
+      id: 'module_not_found',
+      name: 'Module not found',
+      plain_english:
+        'A package your app depends on is missing from the build. This usually means a dependency was not installed during the build, or was accidentally added to devDependencies instead of dependencies.',
+      fix: 'Check your package.json: make sure the missing package is in "dependencies" (not "devDependencies").\nThen redeploy: dailey deploy <project>\nIf the build is failing: dailey build-logs <project>',
+      severity: 'fail',
+    },
+  },
+  {
+    pattern:
+      /TypeError: Cannot read propert(?:y|ies) of undefined|TypeError: Cannot read propert(?:y|ies) of null|ReferenceError: process is not defined/i,
+    issue: {
+      id: 'missing_env_var',
+      name: 'Missing environment variable (likely)',
+      plain_english:
+        'Your app crashed trying to read a value that was undefined or null. This is often a missing environment variable — your code references process.env.SOMETHING that was never set.',
+      fix: 'Check which env vars are set: dailey env list <project>\nSet a missing var: dailey env set <project> MY_VAR "my value"\nThen redeploy: dailey deploy <project>',
+      severity: 'warn',
+    },
+  },
+  {
+    pattern: /secretOrPrivateKey must have a value|jwt.*secret.*undefined|invalid signature/i,
+    issue: {
+      id: 'missing_jwt_secret',
+      name: 'Missing JWT secret',
+      plain_english:
+        'Your app uses JWT (JSON Web Tokens) but the secret key env var is not set. Sessions and auth will fail.',
+      fix: 'Set your JWT secret: dailey env set <project> JWT_SECRET "$(openssl rand -hex 32)"\nThen redeploy: dailey deploy <project>',
+      severity: 'fail',
+    },
+  },
+  {
+    pattern: /SSL SYSCALL error|SSL connection has been closed|EPROTO.*SSL|certificate verify failed/i,
+    issue: {
+      id: 'ssl_db_error',
+      name: 'Database SSL error',
+      plain_english:
+        'Your app failed to establish a secure connection to the database. This usually means the SSL mode in your connection string does not match what the server requires.',
+      fix: 'If using PostgreSQL, add ?sslmode=require to DATABASE_URL.\nIf using MySQL, add ?ssl=true.\nCheck current DATABASE_URL: dailey env list <project>',
+      severity: 'fail',
+    },
+  },
+  {
+    pattern: /SIGTERM|graceful shutdown|terminating connection|Gracefully stopping/i,
+    issue: {
+      id: 'sigterm_restart',
+      name: 'Pod restarting (SIGTERM)',
+      plain_english:
+        'Your app is being stopped and restarted by the platform. This is normal during deploys, but if it is happening repeatedly it means the app is not starting up properly after being stopped.',
+      fix: 'Check pod restart count and crash reasons: dailey processes <project>\nCheck if the latest deploy succeeded: dailey deploy-status <project>',
+      severity: 'warn',
+    },
+  },
+];
+
 async function resolveProjectId(
   projectOrSlug: string,
 ): Promise<{ id: string | null; matched_by: 'id' | 'slug' | 'name' | 'none'; hint?: string }> {
@@ -275,6 +413,46 @@ async function checkRecentErrors(projectId: string): Promise<Lane> {
   };
 }
 
+async function checkKnownPatterns(projectId: string): Promise<Lane> {
+  const res = await apiRequest<{ logs?: string[] }>('GET', `/projects/${projectId}/logs?tail=100`);
+  if (!res.ok) {
+    return { name: 'known_issues', status: 'skip', summary: 'No logs available to scan for known issues.' };
+  }
+  const lines = res.data.logs || [];
+  const logText = lines.join('\n');
+
+  const matched: KnownIssue[] = [];
+  const seen = new Set<string>();
+  for (const rule of KNOWN_PATTERNS) {
+    if (rule.pattern.test(logText) && !seen.has(rule.issue.id)) {
+      seen.add(rule.issue.id);
+      matched.push(rule.issue);
+    }
+  }
+
+  if (matched.length === 0) {
+    return { name: 'known_issues', status: 'ok', summary: 'No known crash patterns detected in last 100 log lines.' };
+  }
+
+  const hasFail = matched.some((i) => i.severity === 'fail');
+  const laneStatus: LaneStatus = hasFail ? 'fail' : 'warn';
+  const names = matched.map((i) => i.name).join('; ');
+
+  return {
+    name: 'known_issues',
+    status: laneStatus,
+    summary: `${matched.length} known issue(s) detected: ${names}`,
+    detail: {
+      issues: matched.map((i) => ({
+        id: i.id,
+        name: i.name,
+        plain_english: i.plain_english,
+        fix: i.fix,
+      })),
+    },
+  };
+}
+
 function aggregateVerdict(lanes: Lane[]): { verdict: 'healthy' | 'degraded' | 'broken'; summary: string } {
   const hasFail = lanes.some((l) => l.status === 'fail');
   const hasWarn = lanes.some((l) => l.status === 'warn');
@@ -359,6 +537,11 @@ export function registerDiagnoseTools(server: McpServer) {
         })),
         checkRecentErrors(projectId).catch((err) => ({
           name: 'errors',
+          status: 'fail' as LaneStatus,
+          summary: `lane crashed: ${err.message}`,
+        })),
+        checkKnownPatterns(projectId).catch((err) => ({
+          name: 'known_issues',
           status: 'fail' as LaneStatus,
           summary: `lane crashed: ${err.message}`,
         })),

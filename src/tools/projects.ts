@@ -26,7 +26,9 @@ export function registerProjectTools(server: McpServer) {
 
       const projects = res.data.projects;
       if (!projects || projects.length === 0) {
-        return textResult('No projects found.');
+        return textResult(
+          `No projects found.\n\nNew to Dailey OS? Call dailey_buddy to get started — it can deploy the blog template (covers every DOS feature in ~30 min) or help you get your own app running.`,
+        );
       }
 
       // Include slug — when multiple projects share a name (common with

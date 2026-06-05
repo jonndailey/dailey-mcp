@@ -34,7 +34,13 @@ import { registerDiagnoseTools } from './tools/diagnose.js';
 import { registerBuddyTools } from './tools/buddy.js';
 import { registerSupportTools } from './tools/support.js';
 
-function preflight(): void {
+function writeStream(stream: NodeJS.WriteStream, text: string): Promise<void> {
+  return new Promise((resolve) => {
+    stream.write(text, () => resolve());
+  });
+}
+
+async function preflight(): Promise<void> {
   const isInteractive = Boolean(process.stdin.isTTY);
 
   if (!hasCredentials()) {
@@ -42,7 +48,8 @@ function preflight(): void {
       'Missing credentials. Set DAILEY_API_TOKEN, or DAILEY_EMAIL + DAILEY_PASSWORD.';
 
     if (isInteractive) {
-      process.stderr.write(
+      await writeStream(
+        process.stderr,
         '\n' +
           'dailey-mcp: ' + msg + '\n\n' +
           'This is an MCP stdio server — it is meant to be spawned by an MCP client\n' +
@@ -73,14 +80,15 @@ function preflight(): void {
           data: msg + ' See https://docs.dailey.cloud/mcp/getting-started',
         },
       };
-      process.stdout.write(JSON.stringify(note) + '\n');
-      process.stderr.write('dailey-mcp: ' + msg + '\n');
+      await writeStream(process.stdout, JSON.stringify(note) + '\n');
+      await writeStream(process.stderr, 'dailey-mcp: ' + msg + '\n');
     }
     process.exit(1);
   }
 
   if (isInteractive) {
-    process.stderr.write(
+    await writeStream(
+      process.stderr,
       '\n' +
         'dailey-mcp: MCP stdio server running.\n' +
         'This server speaks JSON-RPC 2.0 on stdin/stdout — it is driven by an MCP\n' +
@@ -92,11 +100,11 @@ function preflight(): void {
   }
 }
 
-preflight();
+await preflight();
 
 const server = new McpServer({
   name: 'dailey-os',
-  version: '1.12.1',
+  version: '1.13.1',
 });
 
 // DOS Buddy — first in list so it surfaces at the top of tool listings

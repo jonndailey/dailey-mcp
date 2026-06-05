@@ -46,7 +46,7 @@ async function refreshToken(): Promise<string> {
   }
   const res = await fetch(`${API_URL}/customers/login`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'X-Dailey-Source': 'mcp' },
     body: JSON.stringify({ email: DAILEY_EMAIL, password: DAILEY_PASSWORD }),
   });
   if (!res.ok) {
@@ -76,6 +76,9 @@ export async function apiRequest<T = unknown>(
     const headers: Record<string, string> = {
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json',
+      // Identify MCP-originated traffic so the platform can record a customer's
+      // first successful MCP connection (onboarding progress).
+      'X-Dailey-Source': 'mcp',
     };
     const options: RequestInit = { method, headers };
     if (body && (method === 'POST' || method === 'PUT' || method === 'PATCH')) {

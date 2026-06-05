@@ -88,6 +88,13 @@ export function registerStorageTools(server: McpServer) {
         `URL TTL:     ${data.binding.limits.signed_url_ttl_seconds}s`,
       ];
 
+      // Surface credential-missing warning before anything else so the LLM
+      // sees it immediately and can call dailey_storage_enable to fix it.
+      if ((data as any).secret_warning) {
+        lines.push('');
+        lines.push(`⚠ WARNING: ${(data as any).secret_warning}`);
+      }
+
       // Render the new integration_paths block when the API surfaces it.
       // Older customer-api responses still set next_step; fall back to that
       // verbatim so this tool keeps working during the rolling deploy.
@@ -202,6 +209,41 @@ export function registerStorageTools(server: McpServer) {
       lines.push('');
       lines.push(data.upload_url);
       return textResult(lines.join('\n'));
+    },
+  );
+
+  server.tool(
+    'dailey_storage_enable',
+    'Enable object storage on an existing project that was created without it, OR fix a project where storage was enabled but S3_* env vars are missing from the pod (secret_injected=false from dailey_storage_info). Provisions R2 credentials, creates the k8s secret, and patches the running deployment so pods pick up S3_* vars immediately. A redeploy is not required after calling this.',
+    { project_id: z.string().describe('The project ID') },
+    async ({ project_id }) => {
+      const res = await apiRequest<{ ok: boolean; message: string; prefix: string }>(
+        'POST',
+        `/projects/${project_id}/storage/enable`,
+      );
+      if (!res.ok) {
+        // 409 means already enabled — check if the secret is actually present
+        if (res.status === 409) {
+          return textResult(
+            `Storage is already enabled for this project.\n\nIf S3_* vars are still missing from your pod, the credentials secret may not have been created correctly.\nCheck: dailey_storage_info to see secret_injected status.\nFix: redeploy the project (dailey_deploy) to re-mount the secret.`,
+          );
+        }
+        return textResult(formatError(res));
+      }
+      return textResult([
+        `Storage enabled.`,
+        ``,
+        `Prefix:  ${res.data.prefix}`,
+        ``,
+        res.data.message,
+        ``,
+        `S3_* env vars now available in your pod:`,
+        `  S3_ENDPOINT, S3_REGION, S3_BUCKET_NAME`,
+        `  S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, S3_SESSION_TOKEN, S3_KEY_PREFIX`,
+        ``,
+        `Pods are restarting to pick up the new secret (~30s). No rebuild needed.`,
+        `If vars are still missing after 60s, call dailey_deploy to trigger a fresh rollout.`,
+      ].join('\n'));
     },
   );
 

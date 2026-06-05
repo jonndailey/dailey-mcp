@@ -17,7 +17,7 @@ function maskValue(v: string): string {
 export function registerCredentialRevealTools(server: McpServer) {
   server.tool(
     'dailey_reveal_credential',
-    'Reveal a project credential (e.g. DB_PASSWORD). Re-auth required — every reveal is audited. BY DEFAULT returns a masked preview (last 3 chars + length) so the value never enters chat transcripts. To emit the plaintext into this response, pass emit_plaintext=true AND acknowledge that the response will be visible in the chat log / AI history / anyone the user shares the transcript with. Better workflow: use dailey_db_tunnel or dashboard "reveal" (which uses a browser-only modal) for anything you wouldn\'t paste in Slack.',
+    'Reveal a project credential after re-auth. Supports DB credentials (DB_PASSWORD, DB_USER, DB_HOST, DB_PORT, DB_NAME) and storage credentials (S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, S3_SESSION_TOKEN, S3_ENDPOINT, S3_REGION, S3_BUCKET_NAME, S3_KEY_PREFIX). Every reveal is audited. BY DEFAULT returns a masked preview (last 3 chars + length) so the value never enters chat transcripts. Pass emit_plaintext=true to see the full value — only do this when you understand the chat-log exposure. Better workflow for S3 vars: use dailey_storage_enable to fix missing injection; use dailey_db_tunnel for DB creds.',
     {
       project_id: z.string().describe('The project ID'),
       key: z.string().describe('Credential key (e.g., DB_PASSWORD, WORDPRESS_ADMIN_PASSWORD)'),

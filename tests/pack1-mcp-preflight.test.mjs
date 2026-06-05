@@ -25,7 +25,8 @@ import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const BINARY = join(__dirname, '..', 'dist', 'index.js');
@@ -42,10 +43,16 @@ function unbufferAvailable() {
  */
 function runMcp({ env = {}, tty = false, waitMs = 4000, closeStdin = true }) {
   return new Promise((resolve) => {
+    // Isolate HOME + XDG_CONFIG_HOME to an empty temp dir so the server's
+    // readCliStoredToken() (added in 1.13.2) can't pick up the CLI token of
+    // whoever runs the test — otherwise the "no creds" cases aren't actually
+    // cred-less on a machine with a logged-in Dailey CLI.
+    const isolatedHome = mkdtempSync(join(tmpdir(), 'dailey-mcp-test-'));
     const cleanEnv = {
       // Drop the parent's credentials unless explicitly restored below.
       PATH: process.env.PATH,
-      HOME: process.env.HOME,
+      HOME: isolatedHome,
+      XDG_CONFIG_HOME: join(isolatedHome, '.config'),
       NODE_PATH: process.env.NODE_PATH,
       ...env,
     };
@@ -79,9 +86,9 @@ function runMcp({ env = {}, tty = false, waitMs = 4000, closeStdin = true }) {
       try { child.kill('SIGTERM'); } catch {}
     }, waitMs);
 
-    child.on('exit', (code) => {
+    child.on('close', (code) => {
       clearTimeout(timer);
-      resolve({ code, stdout, stderr, killed: false });
+      setImmediate(() => resolve({ code, stdout, stderr, killed: false }));
     });
     child.on('error', (err) => {
       clearTimeout(timer);

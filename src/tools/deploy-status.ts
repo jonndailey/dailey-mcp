@@ -14,6 +14,7 @@ interface DeployStatus {
   new_commits?: number;
   latest_sha?: string | null;
   latest_message?: string | null;
+  pod_crash?: { restart_count: number; recent_logs: string } | null;
 }
 
 interface Build {
@@ -81,6 +82,57 @@ function getFailureGuidance(log: string): { reason: string; fix: string } | null
   return null;
 }
 
+const RUNTIME_CRASH_PATTERNS: Array<{ pattern: RegExp; summary: string; fix: string }> = [
+  {
+    pattern: /P3009|migrate found failed migrations/i,
+    summary: 'Prisma migration failed on startup (P3009). A previous migration left the database in a dirty state and Prisma is blocking all further migrations.',
+    fix: 'Run `npx prisma migrate resolve --rolled-back <migration_name>` to mark the failed migration as rolled back, then redeploy. If the database is fresh with no real data, you can clear `_prisma_migrations` entirely and redeploy to run all migrations from scratch. Use `dailey_db_exec` to inspect the `_prisma_migrations` table.',
+  },
+  {
+    pattern: /Cannot find module|MODULE_NOT_FOUND/,
+    summary: 'App crashed at startup — a required module or file is missing at runtime.',
+    fix: 'A file is imported but does not exist in the deployed image. Search for the import in your source, check if the file was deleted or renamed, and fix the import before redeploying. Run `npx tsc --noEmit` locally to catch this before deploying.',
+  },
+  {
+    pattern: /password authentication failed|ECONNREFUSED.*5432|ECONNREFUSED.*3306|connection refused.*database/i,
+    summary: 'App crashed — cannot connect to the database.',
+    fix: 'Check that the database is provisioned and DATABASE_URL is set. Run `dailey_env_list` to verify the env var is present. If the database was recently created, it may still be initialising — wait 30 seconds and redeploy.',
+  },
+  {
+    pattern: /EADDRINUSE/i,
+    summary: 'App crashed — port already in use.',
+    fix: 'The app is trying to bind a hardcoded port. Read the port from `process.env.PORT` and bind to `0.0.0.0`, not localhost.',
+  },
+  {
+    pattern: /ENOMEM|heap out of memory|JavaScript heap out of memory/i,
+    summary: 'App crashed — out of memory (OOM).',
+    fix: 'The app exceeded its RAM limit. Scale up RAM from the dashboard, or add `--max-old-space-size=<MB>` to NODE_OPTIONS env var to cap Node.js heap below the container limit.',
+  },
+  {
+    pattern: /missing required env|required environment variable|env.*not.*set|getenv.*undefined/i,
+    summary: 'App crashed — a required environment variable is not set.',
+    fix: 'Run `dailey_env_list` to see what env vars are set. Add the missing variable with `dailey_env_set`, then redeploy.',
+  },
+  {
+    pattern: /PRISMA_CLIENT_NOT_GENERATED|@prisma\/client did not initialize/i,
+    summary: 'Prisma Client was not generated before the app started.',
+    fix: 'Add `prisma generate` to your build step or postinstall script. In package.json: `"postinstall": "prisma generate"`.',
+  },
+  {
+    pattern: /SyntaxError|unexpected token|Cannot use import/i,
+    summary: 'App crashed — JavaScript syntax error or ESM/CJS module incompatibility.',
+    fix: 'The compiled output has a syntax error or module format mismatch. Check your tsconfig `module` and `target` settings. Run `npm run build` locally and start the compiled output to reproduce.',
+  },
+];
+
+function getRuntimeCrashGuidance(logs: string): { summary: string; fix: string } | null {
+  if (!logs) return null;
+  for (const { pattern, summary, fix } of RUNTIME_CRASH_PATTERNS) {
+    if (pattern.test(logs)) return { summary, fix };
+  }
+  return null;
+}
+
 export function registerDeployStatusTools(server: McpServer) {
   // Project-level pre-deploy status: can I deploy? is a build running? is there a new commit?
   // Also fetches the latest build row to show progress emojis during active builds.
@@ -143,6 +195,25 @@ export function registerDeployStatusTools(server: McpServer) {
           if (progress) {
             lines.push(`  Progress:  ${progress}`);
           }
+          // Runtime crash — build succeeded but pod is CrashLoopBackOff
+          if (status.pod_crash) {
+            const crash = status.pod_crash;
+            const guidance = getRuntimeCrashGuidance(crash.recent_logs);
+            lines.push('');
+            lines.push(`⚠️  RUNTIME CRASH (build succeeded, app crashes on startup)`);
+            lines.push(`   Restarts:  ${crash.restart_count}`);
+            if (guidance) {
+              lines.push(`   Error:     ${guidance.summary}`);
+              lines.push(`   Fix:       ${guidance.fix}`);
+            } else {
+              lines.push(`   Logs (last 40 lines):`);
+              crash.recent_logs.split('\n').slice(-20).filter(Boolean).forEach((l) => {
+                lines.push(`     ${l}`);
+              });
+              lines.push(`   Tip: call dailey_app_logs with project_id=${project_id} for full logs.`);
+            }
+          }
+
           if (latest.status === 'failed') {
             // Prefer the structured diagnosis fields surfaced by the deploy-service
             // (build_error_summary / build_error_fix) over the local pattern matching.
