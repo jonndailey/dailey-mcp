@@ -1,8 +1,37 @@
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
+
 const API_URL = process.env.DAILEY_API_URL || 'https://os.dailey.cloud/api';
 const DAILEY_EMAIL = process.env.DAILEY_EMAIL;
 const DAILEY_PASSWORD = process.env.DAILEY_PASSWORD;
 
-let currentToken = process.env.DAILEY_API_TOKEN || '';
+// Read the token the Dailey CLI stores after `dailey auth login`. The CLI uses
+// `conf` ({ projectName: 'dailey' }), which writes <config>/dailey-nodejs/config.json
+// (env-paths layout). Reusing it means anyone already logged into the CLI (their
+// `dailey whoami` works) gets a working MCP server with NO credentials in the
+// client config — the installer's generated config only sets DAILEY_API_URL, so
+// without this the server has no auth and exits, surfacing as "Connection closed".
+function readCliStoredToken(): string | undefined {
+  try {
+    const name = 'dailey-nodejs';
+    let dir: string;
+    if (process.platform === 'darwin') {
+      dir = join(homedir(), 'Library', 'Preferences', name);
+    } else if (process.platform === 'win32') {
+      dir = join(process.env.APPDATA || join(homedir(), 'AppData', 'Roaming'), name, 'Config');
+    } else {
+      dir = join(process.env.XDG_CONFIG_HOME || join(homedir(), '.config'), name);
+    }
+    const cfg = JSON.parse(readFileSync(join(dir, 'config.json'), 'utf8'));
+    const tok = typeof cfg?.token === 'string' ? cfg.token.trim() : '';
+    return tok || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+let currentToken = process.env.DAILEY_API_TOKEN || readCliStoredToken() || '';
 
 // Credential preflight lives in index.ts so it can distinguish TTY vs
 // MCP-stdio invocation and emit a JSON-RPC-shaped error instead of just
