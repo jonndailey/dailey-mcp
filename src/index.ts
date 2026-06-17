@@ -13,6 +13,7 @@ import { registerScaleTools } from './tools/scale.js';
 import { registerEnvTools } from './tools/env.js';
 import { registerDomainTools } from './tools/domains.js';
 import { registerDbTools } from './tools/db.js';
+import { registerMigrateTools } from './tools/db-migrate.js';
 import { registerExecRunTools } from './tools/exec-run.js';
 import { registerProjectTransferTools } from './tools/project-transfer.js';
 import { registerAdminTools } from './tools/admin.js';
@@ -135,6 +136,7 @@ registerCredentialRevealTools(server);
 
 // Data
 registerDbTools(server);
+registerMigrateTools(server);
 registerStorageTools(server);
 registerBackupTools(server);
 registerWordPressMigrateTools(server);
