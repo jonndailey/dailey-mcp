@@ -101,12 +101,12 @@ export function registerMigrateTools(server: McpServer) {
     'dailey_db_migrate_start',
     'Start a managed database migration from an external source DB into a project\'s managed database. Submits the source connection and kicks off an estimate (dry-run) — it does NOT copy data yet. The server derives the target engine from the project\'s managed DB (mysql | postgres); the source DB must be the SAME engine. Returns a migration id and status="estimating". Poll dailey_db_migrate_status until status="awaiting_confirm", review rows_total, then call dailey_db_migrate_confirm to run the real copy. The source password is used only to connect — it is never echoed back in any output.',
     {
-      project: z.string().describe('The project ID (or name) to migrate INTO'),
+      project_id: z.string().describe('The project ID (or name) to migrate INTO'),
       source: sourceSchema.describe('External source database connection details'),
       allow_non_empty: z.boolean().optional().describe('Allow migrating into a target DB that already has data'),
       row_ceiling: z.number().int().optional().describe('Optional safety cap on total rows to migrate'),
     },
-    async ({ project, source, allow_non_empty, row_ceiling }) => {
+    async ({ project_id, source, allow_non_empty, row_ceiling }) => {
       const body: Record<string, unknown> = {
         host: source.host,
         database: source.database,
@@ -118,7 +118,7 @@ export function registerMigrateTools(server: McpServer) {
       if (allow_non_empty !== undefined) body.allow_non_empty = allow_non_empty;
       if (row_ceiling !== undefined) body.row_ceiling = row_ceiling;
 
-      const res = await apiRequest<StartResponse>('POST', `/projects/${project}/migrations`, body);
+      const res = await apiRequest<StartResponse>('POST', `/projects/${project_id}/migrations`, body);
       if (!res.ok) return textResult(formatError(res));
 
       const d = res.data;
@@ -128,7 +128,7 @@ export function registerMigrateTools(server: McpServer) {
         `ID:     ${d.id}`,
         `Status: ${d.status}`,
         '',
-        `Estimating now. Poll dailey_db_migrate_status project=${project} id=${d.id} until status=awaiting_confirm,`,
+        `Estimating now. Poll dailey_db_migrate_status project_id=${project_id} id=${d.id} until status=awaiting_confirm,`,
         `then dailey_db_migrate_confirm to run the real copy.`,
       ];
       return textResult(lines.join('\n'));
@@ -139,12 +139,12 @@ export function registerMigrateTools(server: McpServer) {
     'dailey_db_migrate_status',
     'Check the status/progress of a managed migration. With an id, returns that migration\'s progress fields (status, phase, message, rows_total, rows_copied, target_user, target_db, error). Without an id, lists all migrations for the project. Live progress is rows_copied/rows_total. Terminal statuses are completed | failed | canceled.',
     {
-      project: z.string().describe('The project ID (or name)'),
+      project_id: z.string().describe('The project ID (or name)'),
       id: z.string().optional().describe('Migration id. Omit to list all migrations for the project.'),
     },
-    async ({ project, id }) => {
+    async ({ project_id, id }) => {
       if (!id) {
-        const res = await apiRequest<ListResponse>('GET', `/projects/${project}/migrations`);
+        const res = await apiRequest<ListResponse>('GET', `/projects/${project_id}/migrations`);
         if (!res.ok) return textResult(formatError(res));
         const migrations = res.data.migrations || [];
         if (migrations.length === 0) return textResult('No migrations for this project.');
@@ -159,7 +159,7 @@ export function registerMigrateTools(server: McpServer) {
         return textResult(lines.join('\n'));
       }
 
-      const res = await apiRequest<GetResponse>('GET', `/projects/${project}/migrations/${id}`);
+      const res = await apiRequest<GetResponse>('GET', `/projects/${project_id}/migrations/${id}`);
       if (!res.ok) return textResult(formatError(res));
       return textResult(progressLines(res.data.migration).join('\n'));
     },
@@ -169,11 +169,11 @@ export function registerMigrateTools(server: McpServer) {
     'dailey_db_migrate_confirm',
     'Confirm a managed migration that is awaiting confirmation. This triggers the REAL data copy and mints a temporary target user for the load — it is only valid from status=awaiting_confirm. Returns the id and status="queued". After confirming, poll dailey_db_migrate_status to watch rows_copied/rows_total until a terminal status (completed | failed | canceled).',
     {
-      project: z.string().describe('The project ID (or name)'),
+      project_id: z.string().describe('The project ID (or name)'),
       id: z.string().describe('Migration id to confirm (must be awaiting_confirm)'),
     },
-    async ({ project, id }) => {
-      const res = await apiRequest<ConfirmResponse>('POST', `/projects/${project}/migrations/${id}/confirm`);
+    async ({ project_id, id }) => {
+      const res = await apiRequest<ConfirmResponse>('POST', `/projects/${project_id}/migrations/${id}/confirm`);
       if (!res.ok) return textResult(formatError(res));
       const d = res.data;
       const lines = [
@@ -182,7 +182,7 @@ export function registerMigrateTools(server: McpServer) {
         `ID:     ${d.id}`,
         `Status: ${d.status}`,
         '',
-        `Poll dailey_db_migrate_status project=${project} id=${d.id} to watch progress to completion.`,
+        `Poll dailey_db_migrate_status project_id=${project_id} id=${d.id} to watch progress to completion.`,
       ];
       return textResult(lines.join('\n'));
     },
@@ -192,11 +192,11 @@ export function registerMigrateTools(server: McpServer) {
     'dailey_db_migrate_cancel',
     'Cancel a managed migration. Valid from status pending | estimating | awaiting_confirm | queued (409 otherwise). Returns the id and status="canceled".',
     {
-      project: z.string().describe('The project ID (or name)'),
+      project_id: z.string().describe('The project ID (or name)'),
       id: z.string().describe('Migration id to cancel'),
     },
-    async ({ project, id }) => {
-      const res = await apiRequest<CancelResponse>('POST', `/projects/${project}/migrations/${id}/cancel`);
+    async ({ project_id, id }) => {
+      const res = await apiRequest<CancelResponse>('POST', `/projects/${project_id}/migrations/${id}/cancel`);
       if (!res.ok) return textResult(formatError(res));
       const d = res.data;
       const lines = [
