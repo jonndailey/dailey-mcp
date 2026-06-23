@@ -21,6 +21,7 @@ import { registerUsageTools } from './tools/usage.js';
 import { registerBillingTools } from './tools/billing.js';
 import { registerPlatformTools } from './tools/platform.js';
 import { registerStorageTools } from './tools/storage.js';
+import { registerAiTools } from './tools/ai.js';
 import { registerImageTools } from './tools/images.js';
 import { registerProcessTools } from './tools/processes.js';
 import { registerLifecycleTools } from './tools/lifecycle.js';
@@ -138,6 +139,7 @@ registerCredentialRevealTools(server);
 registerDbTools(server);
 registerMigrateTools(server);
 registerStorageTools(server);
+registerAiTools(server);
 registerBackupTools(server);
 registerWordPressMigrateTools(server);
 
