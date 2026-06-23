@@ -1,5 +1,23 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { z } from 'zod';
 import { apiRequest, formatError, textResult, jsonResult } from '../api.js';
+
+interface AuthEnableResponse {
+  ok: boolean;
+  project_id: string;
+  auth_enabled: boolean;
+  created: boolean;
+  app_slug: string;
+  client_id: string;
+  client_secret?: string;
+  enrolled: boolean;
+  x_client_id: string;
+  origin: string;
+  extra_origins: string[];
+  core_base_url: string;
+  note?: string;
+  docs_url: string;
+}
 
 interface UserInfo {
   id: string;
@@ -89,6 +107,45 @@ export function registerAuthTools(server: McpServer) {
         email: u.email,
         recommended_action: null,
       });
+    },
+  );
+
+  server.tool(
+    'dailey_auth_enable',
+    'Enable Dailey Core authentication for a project in one call. Registers the app in Core, installs it in your Core tenant, and enrolls you — wrapping Core self-serve provisioning. The origin is derived from the project (https://<slug>.dailey.cloud, plus any *.dailey.cloud custom domains). After enabling, the app calls Core /auth/* with header X-Client-Id: <app_slug>; the JWT tenant claim is `tenant`. client_secret is returned ONLY the first time. enforce_enrolled_factors defaults to false so password login still works alongside passkeys.',
+    {
+      project_id: z.string().describe('The project ID'),
+      enforce_enrolled_factors: z
+        .boolean()
+        .optional()
+        .describe('Require enrolled factors (e.g. passkey) at login. Defaults to false so password login still works.'),
+    },
+    async ({ project_id, enforce_enrolled_factors }) => {
+      const res = await apiRequest<AuthEnableResponse>('POST', `/projects/${project_id}/auth/enable`, {
+        enforce_enrolled_factors: enforce_enrolled_factors === true,
+      });
+      if (!res.ok) return textResult(formatError(res));
+      const d = res.data;
+      const lines = [
+        `Dailey Core authentication enabled for project ${d.project_id}.`,
+        '',
+        `App / X-Client-Id: ${d.app_slug}`,
+        `Origin:            ${d.origin}`,
+        ...(d.extra_origins && d.extra_origins.length ? [`Also allowed:      ${d.extra_origins.join(', ')}`] : []),
+        `Core base URL:     ${d.core_base_url}`,
+        `Enrolled:          ${d.enrolled ? 'yes' : 'no'}`,
+      ];
+      if (d.client_secret) {
+        lines.push('', `⚠ Save this client_secret — it is shown only once:`, `   ${d.client_secret}`);
+      } else if (d.note) {
+        lines.push('', d.note);
+      }
+      lines.push(
+        '',
+        `Call Core /auth/* with header X-Client-Id: ${d.x_client_id}. The token tenant claim is \`tenant\`.`,
+        `Docs: ${d.docs_url}`,
+      );
+      return textResult(lines.join('\n'));
     },
   );
 }
