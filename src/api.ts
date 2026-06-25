@@ -31,13 +31,26 @@ function readCliStoredToken(): string | undefined {
   }
 }
 
-let currentToken = process.env.DAILEY_API_TOKEN || readCliStoredToken() || '';
+// An explicit env token (headless/CI) takes precedence and is fixed for the
+// process lifetime. Otherwise the token is resolved DYNAMICALLY on every request
+// (resolveToken below): the email/password refresh token if present, else the
+// active CLI login — re-read from disk each call so a `dailey login` account
+// switch is picked up live, without restarting the MCP server. This is what
+// keeps multi-account users in sync (no token is baked into the client config).
+const ENV_TOKEN = process.env.DAILEY_API_TOKEN || '';
+let refreshedToken = '';
+
+export function resolveToken(): string {
+  if (ENV_TOKEN) return ENV_TOKEN;
+  if (refreshedToken) return refreshedToken;
+  return readCliStoredToken() || '';
+}
 
 // Credential preflight lives in index.ts so it can distinguish TTY vs
 // MCP-stdio invocation and emit a JSON-RPC-shaped error instead of just
 // dying with a stderr line that Claude Code doesn't surface.
 export function hasCredentials(): boolean {
-  return Boolean(currentToken || DAILEY_EMAIL);
+  return Boolean(resolveToken() || DAILEY_EMAIL);
 }
 
 async function refreshToken(): Promise<string> {
@@ -56,8 +69,8 @@ async function refreshToken(): Promise<string> {
   if (!data.access_token) {
     throw new Error('Token refresh: no access_token in response');
   }
-  currentToken = data.access_token;
-  return currentToken;
+  refreshedToken = data.access_token;
+  return refreshedToken;
 }
 
 interface ApiResponse<T = unknown> {
@@ -87,13 +100,13 @@ export async function apiRequest<T = unknown>(
     return fetch(url, options);
   };
 
-  let res = await makeRequest(currentToken);
+  let res = await makeRequest(resolveToken());
 
   // Auto-refresh on 401 if credentials are configured
   if (res.status === 401 && DAILEY_EMAIL) {
     try {
       await refreshToken();
-      res = await makeRequest(currentToken);
+      res = await makeRequest(resolveToken());
     } catch {
       // refresh failed, return the original 401
     }
