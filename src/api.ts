@@ -46,6 +46,24 @@ export function resolveToken(): string {
   return readCliStoredToken() || '';
 }
 
+// Active managed-account context for the "manager / managed-accounts" capability.
+// A manager (a Dailey account) can operate inside other accounts that granted
+// them a consent-based grant by sending header `X-Dailey-Account: <slug|id>`;
+// the server verifies a LIVE grant and scopes the request to that account (no
+// re-login). This is SESSION-SCOPED: it persists for the MCP server process
+// lifetime, which is what we want — an agent calls `dailey_use_account` once and
+// every subsequent tool call operates within that account until it clears or
+// switches. When unset, no header is sent (normal self-scoped behavior).
+let activeAccount: string | undefined;
+
+export function setActiveAccount(slugOrId: string | undefined): void {
+  activeAccount = slugOrId && slugOrId.trim() ? slugOrId.trim() : undefined;
+}
+
+export function getActiveAccount(): string | undefined {
+  return activeAccount;
+}
+
 // Credential preflight lives in index.ts so it can distinguish TTY vs
 // MCP-stdio invocation and emit a JSON-RPC-shaped error instead of just
 // dying with a stderr line that Claude Code doesn't surface.
@@ -93,6 +111,11 @@ export async function apiRequest<T = unknown>(
       // first successful MCP connection (onboarding progress).
       'X-Dailey-Source': 'mcp',
     };
+    // Manager / managed-accounts: when an active account is set, scope every
+    // request to it. The server verifies a live consent grant; absent header =
+    // normal self-scoped behavior.
+    const acct = getActiveAccount();
+    if (acct) headers['X-Dailey-Account'] = acct;
     const options: RequestInit = { method, headers };
     if (body && (method === 'POST' || method === 'PUT' || method === 'PATCH')) {
       options.body = JSON.stringify(body);

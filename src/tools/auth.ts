@@ -1,6 +1,12 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { apiRequest, formatError, textResult, jsonResult } from '../api.js';
+import { apiRequest, formatError, textResult, jsonResult, getActiveAccount } from '../api.js';
+
+interface ManagedAccount {
+  managed_customer_id: string;
+  slug: string;
+  name: string;
+}
 
 interface AuthEnableResponse {
   ok: boolean;
@@ -100,12 +106,32 @@ export function registerAuthTools(server: McpServer) {
         source = 'session';
       }
 
+      // Manager / managed-accounts: report whether this user manages any other
+      // accounts (the fleet) and which one — if any — is the active context for
+      // this session. A non-empty fleet means they can `dailey_use_account` to
+      // operate inside one of these accounts. Best-effort: a failure here must
+      // not break auth-status, so we swallow errors and report manager: null.
+      let fleet: ManagedAccount[] = [];
+      try {
+        const mres = await apiRequest<ManagedAccount[]>('GET', '/customers/me/managed-accounts');
+        if (mres.ok && Array.isArray(mres.data)) fleet = mres.data;
+      } catch {
+        // ignore — leave fleet empty
+      }
+      const active = getActiveAccount() ?? null;
+
       return jsonResult({
         authenticated: true,
         source,
         account: u.name,
         email: u.email,
         recommended_action: null,
+        manager: {
+          is_manager: fleet.length > 0,
+          managed_accounts: fleet,
+          active_account: active,
+          operating_as: active ? 'managed_account' : 'self',
+        },
       });
     },
   );

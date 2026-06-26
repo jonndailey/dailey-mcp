@@ -5,6 +5,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 
 import { hasCredentials } from './api.js';
 import { registerAuthTools } from './tools/auth.js';
+import { registerAccountTools } from './tools/accounts.js';
 import { registerProjectTools } from './tools/projects.js';
 import { registerDeployTools } from './tools/deploy.js';
 import { registerDeployStatusTools } from './tools/deploy-status.js';
@@ -111,6 +112,7 @@ const server = new McpServer({
 
 // Core + identity
 registerAuthTools(server);
+registerAccountTools(server);
 registerPlatformTools(server);
 registerUsageTools(server);
 registerBillingTools(server);
