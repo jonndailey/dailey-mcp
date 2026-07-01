@@ -29,6 +29,7 @@ import { registerLifecycleTools } from './tools/lifecycle.js';
 import { registerBackupTools } from './tools/backups.js';
 import { registerWordPressMigrateTools } from './tools/wordpress-migrate.js';
 import { registerWordPressSnapshotTools } from './tools/wordpress-snapshot.js';
+import { registerEnvironmentTools } from './tools/environments.js';
 import { registerResourceConfigTools } from './tools/resource-config.js';
 import { registerLinkTools } from './tools/links.js';
 import { registerCredentialRevealTools } from './tools/credentials-reveal.js';
@@ -146,6 +147,7 @@ registerAiTools(server);
 registerBackupTools(server);
 registerWordPressMigrateTools(server);
 registerWordPressSnapshotTools(server);
+registerEnvironmentTools(server);
 
 // Runtime operations — exec into a pod, run one-off jobs
 registerExecRunTools(server);
