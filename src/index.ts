@@ -23,6 +23,9 @@ import { registerBillingTools } from './tools/billing.js';
 import { registerPlatformTools } from './tools/platform.js';
 import { registerStorageTools } from './tools/storage.js';
 import { registerAiTools } from './tools/ai.js';
+import { registerEmailTools } from './tools/email.js';
+import { registerCreditTools } from './tools/credits.js';
+import { registerAddonTools } from './tools/addons.js';
 import { registerImageTools } from './tools/images.js';
 import { registerProcessTools } from './tools/processes.js';
 import { registerLifecycleTools } from './tools/lifecycle.js';
@@ -117,6 +120,9 @@ registerAccountTools(server);
 registerPlatformTools(server);
 registerUsageTools(server);
 registerBillingTools(server);
+// À-la-carte billing surfaces — prepaid credits + capacity add-ons.
+registerCreditTools(server);
+registerAddonTools(server);
 
 // Projects + deploys
 registerProjectTools(server);
@@ -143,6 +149,7 @@ registerDbTools(server);
 registerMigrateTools(server);
 registerStorageTools(server);
 registerAiTools(server);
+registerEmailTools(server);
 registerBackupTools(server);
 registerWordPressMigrateTools(server);
 registerWordPressSnapshotTools(server);
