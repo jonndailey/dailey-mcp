@@ -96,11 +96,18 @@ jobs:
         if: always()
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          FALLBACK_REF: ${{ github.event.inputs.branch || github.ref_name }}
         run: |
           STATUS="${{ job.status }}"
-          COMMIT="${{ github.event.head_commit.message }}"
-          COMMIT="${COMMIT:-${{ github.event.inputs.branch || github.ref_name }}}"
-          COMMIT=$(echo "$COMMIT" | head -c 72)
+          # Untrusted commit message arrives via env (never interpolated into the
+          # script — prevents shell injection), then first line only, truncated,
+          # and JSON-escaped so it can't break the shell or the Slack payload.
+          COMMIT="${COMMIT_MSG:-$FALLBACK_REF}"
+          COMMIT="${COMMIT%%$'\n'*}"
+          COMMIT="${COMMIT:0:72}"
+          COMMIT="${COMMIT//\\/\\\\}"
+          COMMIT="${COMMIT//\"/\\\"}"
           RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           REPO=$(echo "${{ github.repository }}" | cut -d/ -f2)
           if [ "$STATUS" = "success" ]; then
