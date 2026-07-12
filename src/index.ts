@@ -32,6 +32,7 @@ import { registerProcessTools } from './tools/processes.js';
 import { registerLifecycleTools } from './tools/lifecycle.js';
 import { registerBackupTools } from './tools/backups.js';
 import { registerWordPressMigrateTools } from './tools/wordpress-migrate.js';
+import { registerWordPressImportTools } from './tools/wordpress-import.js';
 import { registerWordPressSnapshotTools } from './tools/wordpress-snapshot.js';
 import { registerEnvironmentTools } from './tools/environments.js';
 import { registerResourceConfigTools } from './tools/resource-config.js';
@@ -155,6 +156,7 @@ registerEmailTools(server);
 registerDaileyImagesTools(server);
 registerBackupTools(server);
 registerWordPressMigrateTools(server);
+registerWordPressImportTools(server);
 registerWordPressSnapshotTools(server);
 registerEnvironmentTools(server);
 

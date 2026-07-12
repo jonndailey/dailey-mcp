@@ -8,8 +8,11 @@ interface Snapshot {
   kind: string;
   status: string;
   env?: string;
+  reason?: string;
+  label?: string | null;
   db_bytes?: number;
   uploads_bytes?: number;
+  content_bytes?: number;
 }
 
 interface SnapshotsResponse {
@@ -78,13 +81,13 @@ export function registerWordPressSnapshotTools(server: McpServer) {
 
       const lines = [
         `Snapshots for project ${project_id}`,
-        `${'ID'.padEnd(38)} ${'Created'.padEnd(26)} ${'Kind'.padEnd(12)} ${'Status'.padEnd(12)} ${'DB'.padEnd(10)} Uploads`,
+        `${'ID'.padEnd(38)} ${'Created'.padEnd(26)} ${'Reason'.padEnd(10)} ${'Label'.padEnd(24)} ${'Status'.padEnd(12)} ${'DB'.padEnd(10)} Content`,
         '─'.repeat(115),
       ];
 
       for (const s of snapshots) {
         lines.push(
-          `${(s.id || '').padEnd(38)} ${(s.created_at || '-').padEnd(26)} ${(s.kind || '-').padEnd(12)} ${(s.status || '-').padEnd(12)} ${fmtBytes(s.db_bytes).padEnd(10)} ${fmtBytes(s.uploads_bytes)}`,
+          `${(s.id || '').padEnd(38)} ${(s.created_at || '-').padEnd(26)} ${(s.reason || 'manual').padEnd(10)} ${((s.label ?? '').slice(0, 24) || '—').padEnd(24)} ${(s.status || '-').padEnd(12)} ${fmtBytes(s.db_bytes).padEnd(10)} ${fmtBytes(s.content_bytes ?? s.uploads_bytes)}`,
         );
       }
 
@@ -97,9 +100,10 @@ export function registerWordPressSnapshotTools(server: McpServer) {
     'Create a snapshot (DB + uploads) of a WordPress project',
     {
       project_id: z.string().describe('The project ID'),
+      label: z.string().optional().describe('Optional human label; labeled points are kept until deleted (never auto-expire)'),
     },
-    async ({ project_id }) => {
-      const res = await apiRequest<SnapshotStartResponse>('POST', `/projects/${project_id}/wp/snapshot`);
+    async ({ project_id, label }) => {
+      const res = await apiRequest<SnapshotStartResponse>('POST', `/projects/${project_id}/wp/snapshot`, label ? { label } : undefined);
       if (!res.ok) return textResult(formatError(res));
 
       const { operation_id } = res.data;
