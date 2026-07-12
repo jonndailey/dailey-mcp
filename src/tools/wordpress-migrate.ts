@@ -13,6 +13,8 @@ interface StartResponse {
 }
 interface RunResponse { ok: boolean; migration_id: string; new_url: string }
 interface StatusResponse { status: string; step?: string; error?: string; log_tail?: string; finished_at?: string }
+interface ScanFinding { level: string; code: string; message: string }
+interface ScanResponse { ok: boolean; verdict: 'clean' | 'warn' | 'blocked'; findings: ScanFinding[] }
 
 export function registerWordPressMigrateTools(server: McpServer) {
   server.tool(
@@ -25,9 +27,10 @@ export function registerWordPressMigrateTools(server: McpServer) {
       content_file: z.string().optional().describe('Local path to the wp-content archive (.tar.gz/.tgz/.zip) — required for migrate'),
       old_url: z.string().optional().describe('The site\'s current URL, e.g. https://oldsite.com — required for migrate'),
       table_prefix: z.string().optional().describe('Table prefix if not wp_'),
+      allow_unsafe: z.boolean().optional().describe('Proceed even if the pre-migrate scan reports a blocked verdict (non-malware only)'),
       migration_id: z.string().optional().describe('Migration ID — required for status'),
     },
-    async ({ project_id, action, db_file, content_file, old_url, table_prefix, migration_id }) => {
+    async ({ project_id, action, db_file, content_file, old_url, table_prefix, allow_unsafe, migration_id }) => {
       if (action === 'status') {
         if (!migration_id) return textResult('migration_id is required for action=status');
         const res = await apiRequest<StatusResponse>('GET', `/projects/${project_id}/migrate/wordpress/${migration_id}`);
@@ -58,6 +61,19 @@ export function registerWordPressMigrateTools(server: McpServer) {
         const message = e instanceof Error ? e.message : String(e);
         return textResult(`Upload failed: ${message}\nMigration ${mid} is still pending — fix the file and call migrate again (a new migration will be started).`);
       }
+
+      // Pre-migrate scan is REQUIRED server-side before /run (returns 409
+      // scan_required otherwise). Without this, migrate fails at launch and
+      // leaves a pending migration lock on the project.
+      const scan = await apiRequest<ScanResponse>('POST', `/projects/${project_id}/migrate/wordpress/${mid}/scan`, {
+        allow_unsafe: Boolean(allow_unsafe),
+      });
+      if (scan.status === 409) {
+        const findings = (scan.data as ScanResponse | undefined)?.findings ?? [];
+        const list = findings.length ? findings.map((f) => `  [${f.level}] ${f.code}: ${f.message}`).join('\n') : '  (no findings detail returned)';
+        return textResult(`Refusing to run: server-side scan gate is BLOCKED.\n${list}\nMigration ${mid} is still pending — pass allow_unsafe=true to override (logged) and call migrate again.`);
+      }
+      if (!scan.ok) return textResult(formatError(scan));
 
       const run = await apiRequest<RunResponse>('POST', `/projects/${project_id}/migrate/wordpress/${mid}/run`, {
         old_url, ...(table_prefix ? { table_prefix } : {}),
