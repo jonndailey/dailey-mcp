@@ -16,7 +16,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@daileyos/wp-bundle": "file:/home/jonny/apps/dailey-wp-bundle",
+    "@daileyos/wp-bundle": "^0.1.0",
     "@modelcontextprotocol/sdk": "^1.12.1",
     "zod": "^3.24.4"
   },
