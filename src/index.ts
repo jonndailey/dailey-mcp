@@ -34,6 +34,7 @@ import { registerBackupTools } from './tools/backups.js';
 import { registerWordPressMigrateTools } from './tools/wordpress-migrate.js';
 import { registerWordPressImportTools } from './tools/wordpress-import.js';
 import { registerWordPressSnapshotTools } from './tools/wordpress-snapshot.js';
+import { registerWordPressLiveEditTools } from './tools/wordpress-live-edit.js';
 import { registerWordPressTargetingTools } from './tools/wordpress-targeting.js';
 import { registerEnvironmentTools } from './tools/environments.js';
 import { registerResourceConfigTools } from './tools/resource-config.js';
@@ -159,9 +160,11 @@ registerBackupTools(server);
 registerWordPressMigrateTools(server);
 registerWordPressImportTools(server);
 registerWordPressSnapshotTools(server);
-// Scenario 1 create + WP targeting spine (list/target). The list/target tools
-// require the paired customer-api feat/wp-targeting-spine deploy; until it ships
-// they 404 (expected — both merge together in the change window).
+// WordPress live-edit tools (files/media/wp-cli) wrapping customer-api#18's
+// tenant-scoped live-edit routes. Mutating ops are two-phase (preview → confirm_token).
+registerWordPressLiveEditTools(server);
+// Scenario 1 create + WP targeting spine (list/target), paired with the
+// customer-api targeting-spine deploy.
 registerWordPressTargetingTools(server);
 registerEnvironmentTools(server);
 
