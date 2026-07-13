@@ -141,7 +141,7 @@ To check build status: use dailey_deploy_status or dailey_build_logs.
 
 ## Environment variables
 
-- Set via dailey_env_set (single) or dailey_env_set_many (bulk)
+- Read/set via dailey_env_vars (list, get, set, delete); dailey_env_runtime_list shows every var the pod actually sees
 - Changes take effect on next deploy (not live-patched)
 - Never auto-generate or overwrite variables that look customer-set
 - Sensitive vars (API keys, passwords) are encrypted at rest
