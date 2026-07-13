@@ -1,6 +1,7 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
+import { OWN_VERSION } from './version.js';
 
 const API_URL = process.env.DAILEY_API_URL || 'https://os.dailey.cloud/api';
 const DAILEY_EMAIL = process.env.DAILEY_EMAIL;
@@ -110,6 +111,10 @@ export async function apiRequest<T = unknown>(
       // Identify MCP-originated traffic so the platform can record a customer's
       // first successful MCP connection (onboarding progress).
       'X-Dailey-Source': 'mcp',
+      // Version fingerprint (2026-07-13 stale-client incident): lets the
+      // platform see which MCP versions are live in the field. A request with
+      // X-Dailey-Source: mcp but NO version header is a pre-1.20.7 client.
+      'X-Dailey-Client-Version': OWN_VERSION,
     };
     // Manager / managed-accounts: when an active account is set, scope every
     // request to it. The server verifies a live consent grant; absent header =

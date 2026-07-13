@@ -4,6 +4,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 
 import { hasCredentials } from './api.js';
+import { OWN_VERSION, checkForNewerVersion, outdatedNotice } from './version.js';
 import { registerAuthTools } from './tools/auth.js';
 import { registerAccountTools } from './tools/accounts.js';
 import { registerProjectTools } from './tools/projects.js';
@@ -114,10 +115,22 @@ async function preflight(): Promise<void> {
 
 await preflight();
 
-const server = new McpServer({
-  name: 'dailey-os',
-  version: '1.13.4',
-});
+// Staleness self-check (2026-07-13 incident: sessions silently ran a months-old
+// MCP and the agent concluded platform features didn't exist). Fail-open + hard
+// timeout; when outdated, the notice rides the server instructions so the AGENT
+// itself tells the user to update instead of silently missing tools.
+const newerVersion = await checkForNewerVersion();
+if (newerVersion) {
+  process.stderr.write(`dailey-mcp: v${OWN_VERSION} is outdated (latest v${newerVersion})\n`);
+}
+
+const server = new McpServer(
+  {
+    name: 'dailey-os',
+    version: OWN_VERSION,
+  },
+  newerVersion ? { instructions: outdatedNotice(newerVersion) } : undefined,
+);
 
 // Core + identity
 registerAuthTools(server);
