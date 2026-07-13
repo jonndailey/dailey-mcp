@@ -34,6 +34,7 @@ import { registerBackupTools } from './tools/backups.js';
 import { registerWordPressMigrateTools } from './tools/wordpress-migrate.js';
 import { registerWordPressImportTools } from './tools/wordpress-import.js';
 import { registerWordPressSnapshotTools } from './tools/wordpress-snapshot.js';
+import { registerWordPressTargetingTools } from './tools/wordpress-targeting.js';
 import { registerEnvironmentTools } from './tools/environments.js';
 import { registerResourceConfigTools } from './tools/resource-config.js';
 import { registerLinkTools } from './tools/links.js';
@@ -158,6 +159,10 @@ registerBackupTools(server);
 registerWordPressMigrateTools(server);
 registerWordPressImportTools(server);
 registerWordPressSnapshotTools(server);
+// Scenario 1 create + WP targeting spine (list/target). The list/target tools
+// require the paired customer-api feat/wp-targeting-spine deploy; until it ships
+// they 404 (expected — both merge together in the change window).
+registerWordPressTargetingTools(server);
 registerEnvironmentTools(server);
 
 // Runtime operations — exec into a pod, run one-off jobs
