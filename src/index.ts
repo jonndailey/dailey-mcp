@@ -35,6 +35,7 @@ import { registerWordPressMigrateTools } from './tools/wordpress-migrate.js';
 import { registerWordPressImportTools } from './tools/wordpress-import.js';
 import { registerWordPressSnapshotTools } from './tools/wordpress-snapshot.js';
 import { registerWordPressLiveEditTools } from './tools/wordpress-live-edit.js';
+import { registerWordPressTargetingTools } from './tools/wordpress-targeting.js';
 import { registerEnvironmentTools } from './tools/environments.js';
 import { registerResourceConfigTools } from './tools/resource-config.js';
 import { registerLinkTools } from './tools/links.js';
@@ -160,11 +161,11 @@ registerWordPressMigrateTools(server);
 registerWordPressImportTools(server);
 registerWordPressSnapshotTools(server);
 // WordPress live-edit tools (files/media/wp-cli) wrapping customer-api#18's
-// tenant-scoped live-edit routes. Mutating ops are two-phase (preview →
-// confirm_token). These 404 until capi#18 deploys (both merge in the same
-// window). NOTE: trivial registration overlap here with the
-// feat/wp-scenario1-targeting-tools PR — resolve at merge.
+// tenant-scoped live-edit routes. Mutating ops are two-phase (preview → confirm_token).
 registerWordPressLiveEditTools(server);
+// Scenario 1 create + WP targeting spine (list/target), paired with the
+// customer-api targeting-spine deploy.
+registerWordPressTargetingTools(server);
 registerEnvironmentTools(server);
 
 // Runtime operations — exec into a pod, run one-off jobs
