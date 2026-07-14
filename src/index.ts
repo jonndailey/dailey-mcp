@@ -3,7 +3,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 
-import { hasCredentials } from './api.js';
+import { z } from 'zod';
+import { hasCredentials, getActiveAccount, setActiveAccount } from './api.js';
 import { OWN_VERSION, checkForNewerVersion, outdatedNotice } from './version.js';
 import { registerAuthTools } from './tools/auth.js';
 import { registerAccountTools } from './tools/accounts.js';
@@ -131,6 +132,48 @@ const server = new McpServer(
   },
   newerVersion ? { instructions: outdatedNotice(newerVersion) } : undefined,
 );
+
+// ─── Account-context hardening (2026-07-13, Muenda's "which account am I in?") ───
+// Two invariants, applied uniformly to ALL tools via this registration wrapper:
+//   1. Every tool accepts an optional `account` param — a STATELESS, per-call
+//      scope to a managed account (set → run → restore). Agents no longer have
+//      to rely on dailey_use_account session state being what they remember.
+//   2. Every tool result is prefixed with `[account: <effective>]` so the model
+//      (and the human reading the transcript) always sees which account the
+//      call actually ran against. Wrong-account work becomes visible instantly.
+// Tools that declare their own `account` param (the WP tools) keep their schema;
+// the wrapper still enforces the per-call set/restore around them.
+{
+  const originalTool = server.tool.bind(server);
+  (server as any).tool = (name: string, description: string, schema: Record<string, unknown>, handler: (...a: any[]) => any) => {
+    const augmented = 'account' in schema
+      ? schema
+      : {
+          ...schema,
+          account: z.string().optional().describe(
+            'Managed-account slug to run THIS call against (per-call scope; overrides the dailey_use_account session state for this call only). Omit to use the current session account.',
+          ),
+        };
+    return originalTool(name, description, augmented as any, async (args: any, extra: any) => {
+      const requested: string | undefined =
+        typeof args?.account === 'string' && args.account.trim() ? args.account.trim() : undefined;
+      const prev = getActiveAccount();
+      if (requested) setActiveAccount(requested);
+      try {
+        const result = await handler(args, extra);
+        const effective = requested ?? getActiveAccount() ?? 'self (your own account)';
+        if (result?.content?.length && result.content[0]?.type === 'text') {
+          result.content[0].text = `[account: ${effective}]\n${result.content[0].text}`;
+        }
+        return result;
+      } finally {
+        // Restore ONLY when this call temporarily overrode the session scope —
+        // dailey_use_account itself must keep its session-setting behavior.
+        if (requested) setActiveAccount(prev);
+      }
+    });
+  };
+}
 
 // Core + identity
 registerAuthTools(server);
