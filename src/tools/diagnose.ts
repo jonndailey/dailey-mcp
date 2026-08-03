@@ -206,9 +206,12 @@ async function checkDeploy(projectId: string): Promise<Lane> {
   let laneStatus: LaneStatus = 'ok';
   let summary = `Deployed ${deployedAt || 'never'}`;
 
-  if (latest?.status === 'failed') {
+  if (latest?.status === 'failed' && isBuilding) {
     laneStatus = 'fail';
-    summary = `Latest build ${latest.id} failed (${latest.finished_at || 'unknown time'}).`;
+    summary = 'Build failed and is still marked as building — possible data corruption or platform issue.';
+  } else if (latest?.status === 'failed') {
+    laneStatus = 'fail';
+    summary = `Latest build ${latest.id} failed (${latest.finished_at || 'no finish time'}).`;
   } else if (isBuilding) {
     laneStatus = 'warn';
     summary = `Build in progress (${latest?.id || 'unknown'}).`;
