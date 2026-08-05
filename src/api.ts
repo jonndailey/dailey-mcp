@@ -151,17 +151,52 @@ export async function apiRequest<T = unknown>(
   return { ok: res.ok, status: res.status, data };
 }
 
+/**
+ * Turn an auth failure into an accurate message.
+ *
+ * 401 and 403 used to share one: "Not authenticated — run `dailey auth setup`".
+ * A customer hit that on 2026-08-04 while their CLI was logged in and
+ * `dailey whoami` worked. The advice was wrong twice over. There is exactly ONE
+ * credential store — `dailey login` and `dailey auth setup` both call setToken()
+ * and write the same `token` key in the same file this server reads — so they
+ * were told to redo what they had already done. They gave up and emailed
+ * support by hand, which is precisely what the support tool exists to prevent.
+ *
+ * Pure on purpose: whether a credential exists is passed in, so this can be
+ * tested without depending on what happens to be on the machine's disk.
+ */
+export function authError(status: number, hasCredential: boolean, detail = '') {
+  if (status === 403) {
+    // The credential worked. Re-authenticating cannot help and sends people
+    // round in circles.
+    return {
+      error_code: 'DAILEY_FORBIDDEN',
+      message: `You are signed in, but not allowed to do this.${detail ? ` ${detail}` : ''}`,
+      remediation: 'Re-authenticating will not help. Check you are acting on the right account (`dailey_accounts`), and that your plan or role permits this action.',
+      help_url: 'https://docs.dailey.cloud/auth',
+    };
+  }
+  return hasCredential ? {
+    error_code: 'DAILEY_AUTH_EXPIRED',
+    message: 'Your Dailey credential was rejected — it has probably expired.',
+    remediation: 'Run `dailey login` (or `dailey auth setup`) to refresh it. Both store the same credential.',
+    help_url: 'https://docs.dailey.cloud/auth',
+  } : {
+    error_code: 'DAILEY_AUTH_REQUIRED',
+    message: 'No Dailey credential found on this machine.',
+    remediation: 'Run `dailey login` (or `dailey auth setup`) to sign in. Either works — they store the same credential.',
+    help_url: 'https://docs.dailey.cloud/auth',
+  };
+}
+
 export function formatError(res: ApiResponse): string {
   // 401/403 always returns a structured auth error object as JSON text so MCP
   // clients (and agents reading tool output) get a machine-readable signal with
   // a clear remediation path rather than a generic "Error (401): ..." string.
   if (res.status === 401 || res.status === 403) {
-    return JSON.stringify({
-      error_code: 'DAILEY_AUTH_REQUIRED',
-      message: 'Not authenticated',
-      remediation: 'Run `dailey auth setup` in your terminal',
-      help_url: 'https://docs.dailey.cloud/auth',
-    }, null, 2);
+    const detail = typeof res.data === 'object' && res.data !== null && 'error' in res.data
+      ? String((res.data as { error: unknown }).error) : '';
+    return JSON.stringify(authError(res.status, !!resolveToken(), detail), null, 2);
   }
 
   const data = res.data;
