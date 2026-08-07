@@ -65,7 +65,7 @@ test('dailey_create_wordpress POSTs /projects with the hardened WP catalog body 
   assert.ok(post, 'must POST /projects');
   assert.deepStrictEqual(post!.body, {
     name: 'My Blog',
-    repo_url: 'wordpress:6-apache',
+    repo_url: 'wordpress',
     needs_database: true,
     needs_storage: true,
   });
@@ -124,4 +124,39 @@ test('dailey_wp_target returns a clear not-found on 404 pointing at dailey_wp_li
   assert.strictEqual(parsed.active_account, 'acme');
   assert.match(parsed.message, /No WordPress project matching 'ghost'/);
   assert.match(parsed.message, /dailey_wp_list/);
+});
+
+/**
+ * Regression guard for the 2026-08-07 outage.
+ *
+ * `repo_url` is what deploy-service resolves the catalog template from on EVERY
+ * deploy — the MySQL env, the persistent wp-content volume, the backup sidecar and
+ * the Recreate strategy all hang off that lookup. It must be the catalog SLUG.
+ *
+ * It was previously the image ref `wordpress:6-apache`, matched by comparing image
+ * repositories. When the catalog image was repointed to
+ * `registry.dailey.cloud/catalog/wordpress:6-apache-wpcli` on 2026-07-13, the
+ * repositories stopped matching, the lookup returned null, and every WordPress site
+ * created afterwards came up as a generic stateless app — no volume, no
+ * WORDPRESS_DB_*, no wp-cli — serving the installer.
+ *
+ * The assertion above used to pin the image ref, so it stayed green throughout.
+ * This test states the actual invariant instead: never send an image ref here.
+ */
+test('dailey_create_wordpress sends the catalog SLUG, never an image ref (repoint-proof)', async (t) => {
+  const mock = makeApiMock();
+  t.mock.module('../src/api.js', { namedExports: mock.namedExports });
+
+  const { registerWordPressTargetingTools } = await import('../src/tools/wordpress-targeting.js?t=slug');
+  const { server, getHandler } = makeFakeServer();
+  registerWordPressTargetingTools(server as any);
+
+  await getHandler('dailey_create_wordpress')({ name: 'Shop' });
+
+  const post = mock.calls.find((c) => c.path === '/projects');
+  const repoUrl = (post!.body as any).repo_url as string;
+
+  assert.strictEqual(repoUrl, 'wordpress', 'must be the catalog slug');
+  assert.ok(!repoUrl.includes(':'), 'a tag means an image ref was sent, not a slug');
+  assert.ok(!repoUrl.includes('/'), 'a registry path means an image ref was sent, not a slug');
 });
