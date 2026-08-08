@@ -9,10 +9,25 @@ import {
   setActiveAccount,
 } from '../api.js';
 
-// The hardened WordPress catalog template is resolved by the deploy-service from
-// this image name — it wires the MySQL DB + persistent wp-content volume +
-// generated admin creds. Do NOT change without the paired catalog entry.
-const WORDPRESS_CATALOG_IMAGE = 'wordpress:6-apache';
+/**
+ * The catalog SLUG (the key in dailey-deploy-service's CATALOG, src/routes/deploy-image.ts)
+ * — not an image ref. This is what gets stored as the project's `repo_url`, and the
+ * deploy-service resolves the template from it on every deploy: MySQL DB env, the
+ * persistent wp-content volume, the backup sidecar, the Recreate strategy and the
+ * generated admin creds all hang off that lookup.
+ *
+ * It used to be the image ref `wordpress:6-apache`, matched by comparing image
+ * repositories. On 2026-07-13 the catalog image was repointed to
+ * `registry.dailey.cloud/catalog/wordpress:6-apache-wpcli` to bake in wp-cli, and the
+ * repository names stopped matching — so `getCatalogEntry` returned null and every
+ * WordPress site created afterwards came up as a generic stateless app: no volume, no
+ * WORDPRESS_DB_* env, no wp-cli, serving the installer. Verified 2026-08-07.
+ *
+ * The slug is matched by exact key (`if (CATALOG[input]) return CATALOG[input]`), which
+ * is the FIRST branch of the lookup, so it cannot be broken by repointing the image
+ * again. Prefer the slug over any image ref here, permanently.
+ */
+const WORDPRESS_CATALOG_SLUG = 'wordpress';
 
 interface CreatedProject {
   id: string;
@@ -55,7 +70,7 @@ export function registerWordPressTargetingTools(server: McpServer) {
   // ── Tool 1 — Scenario 1: create a fresh hardened WordPress site ──────────
   server.tool(
     'dailey_create_wordpress',
-    'Create a brand-new hardened WordPress site in the effective account (respects the account set by dailey_use_account, or the optional `account` arg here). POSTs the standard project-create endpoint with the WordPress catalog image so the deploy-service provisions the MySQL database, a persistent wp-content volume, and generated admin credentials. Prefer this over dailey_wordpress_import when you just need a fresh site (import is for migrating an existing bundle). Returns the project_id, slug, the wp-admin URL, and the effective account. The generated admin password is retrievable via dailey_reveal_credential (key WORDPRESS_ADMIN_PASSWORD).',
+    'Create a brand-new hardened WordPress site in the effective account (respects the account set by dailey_use_account, or the optional `account` arg here). POSTs the standard project-create endpoint with the WordPress catalog slug so the deploy-service provisions the MySQL database, a persistent wp-content volume, a backup sidecar, and generated admin credentials. Note: WordPress core is NOT auto-installed — the site serves the standard WordPress installer on first visit; the generated admin credentials are for the account you create there. Prefer this over dailey_wordpress_import when you just need a fresh site (import is for migrating an existing bundle). Returns the project_id, slug, the wp-admin URL, and the effective account. The generated admin password is retrievable via dailey_reveal_credential (key WORDPRESS_ADMIN_PASSWORD).',
     {
       name: z.string().describe('Project name for the new WordPress site'),
       account: z
@@ -68,10 +83,10 @@ export function registerWordPressTargetingTools(server: McpServer) {
 
       // Reuse the exact dailey_create_project call shape (POST /projects) but
       // with the hardened WordPress catalog inputs. The deploy-service resolves
-      // the catalog template by image name and wires DB + storage + admin creds.
+      // the catalog template from this slug and wires DB + storage + admin creds.
       const res = await apiRequest<CreatedProject>('POST', '/projects', {
         name,
-        repo_url: WORDPRESS_CATALOG_IMAGE,
+        repo_url: WORDPRESS_CATALOG_SLUG,
         needs_database: true,
         needs_storage: true,
       });
