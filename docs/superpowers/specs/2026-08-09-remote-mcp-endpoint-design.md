@@ -34,7 +34,10 @@ Zero changes to the 41 tool modules.
 - Admin + local-auth tools never registered on the remote surface.
 - In-process per-token rate limit: 60 requests/min (fixed window, `Map<tokenHash, {count, windowStart}>`); over-limit → HTTP 429. Token keys are sha256 truncations — raw tokens never held beyond the request, never logged.
 - No request-body logging; access log line = method, path, status, duration, token hash prefix (8 chars).
-- `setActiveAccount`/`getActiveAccount` module state is process-global today; the remote entry must NOT use it (account scoping stays per-call via the tools' existing per-call account params — v1.21.0 added per-call account scope, which is what remote uses). `http.ts` never calls `setActiveAccount`.
+- **Active-account state (three moves, decided 2026-08-09 after review):**
+  1. Remote surface registers the account-LIST tool but NOT the account-SWITCH tool (stateless mode has no session to remember it; a manager with two connectors could otherwise cross-wire accounts with valid creds). The list tool's remote description instructs "pass `account:` per call" (supported on every tool since v1.21.0).
+  2. The AsyncLocalStorage store is `{ token: string, account?: string }`. `setActiveAccount()`/`getActiveAccount()` consult the ALS store FIRST (write/read request-scoped state when present) and fall through to the module global only when no store exists (stdio). Cross-user bleed becomes impossible by construction — any code path that "sets the account" inside a remote request affects only that request.
+  3. Fix `wordpress-live-edit.ts:62`, which mutates the global as a side effect of its per-call `account` param — route it through the same mechanism (this is a latent stdio bug too: a per-call param permanently switching the session's account).
 
 ## Deployment
 - `Dockerfile` (new, repo root): node:22-alpine, `npm ci && npm run build`, `CMD ["node", "dist/http.js"]`, `EXPOSE 8080` (`PORT` env honored, default 8080).
