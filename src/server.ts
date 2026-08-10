@@ -73,7 +73,15 @@ export function buildServer(opts: BuildOptions): McpServer {
   // the wrapper still enforces the per-call set/restore around them.
   {
     const originalTool = server.tool.bind(server);
+    // Tools whose PURPOSE is to set the session account must be left alone by
+    // the per-call scope wrapper — otherwise the wrapper's finally-restore
+    // undoes the switch the moment the call returns (dailey_use_account was
+    // silently non-sticky on stdio because of this). Register them raw.
+    const SESSION_ACCOUNT_SETTERS = new Set(['dailey_use_account']);
     (server as any).tool = (name: string, description: string, schema: Record<string, unknown>, handler: (...a: any[]) => any) => {
+      if (SESSION_ACCOUNT_SETTERS.has(name)) {
+        return originalTool(name, description, schema as any, handler);
+      }
       const augmented = 'account' in schema
         ? schema
         : {
