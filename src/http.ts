@@ -15,13 +15,13 @@ const AUTH_SERVER = 'https://core.dailey.cloud';
 // ── fixed-window rate limiting ──────────────────────────────────────────────
 const tokenWindows = new Map<string, { count: number; windowStart: number }>();
 let globalWindow = { count: 0, windowStart: Date.now() };
-function allow(tokenHash: string): boolean {
+function allow(tokenHash: string): 'ok' | 'token' | 'global' {
   const now = Date.now();
   if (now - globalWindow.windowStart >= 60_000) globalWindow = { count: 0, windowStart: now };
-  if (++globalWindow.count > GLOBAL_LIMIT) return false;
+  if (++globalWindow.count > GLOBAL_LIMIT) return 'global';
   const w = tokenWindows.get(tokenHash);
-  if (!w || now - w.windowStart >= 60_000) { tokenWindows.set(tokenHash, { count: 1, windowStart: now }); return true; }
-  return ++w.count <= PER_TOKEN_LIMIT;
+  if (!w || now - w.windowStart >= 60_000) { tokenWindows.set(tokenHash, { count: 1, windowStart: now }); return 'ok'; }
+  return ++w.count <= PER_TOKEN_LIMIT ? 'ok' : 'token';
 }
 setInterval(() => { // stop the map growing forever
   const cutoff = Date.now() - 120_000;
@@ -29,7 +29,7 @@ setInterval(() => { // stop the map growing forever
 }, 60_000).unref();
 
 function hashToken(token: string): string {
-  return createHash('sha256').update(token).digest('hex').slice(0, 8);
+  return createHash('sha256').update(token).digest('hex');
 }
 
 function cors(res: http.ServerResponse): void {
@@ -46,6 +46,7 @@ function json(res: http.ServerResponse, status: number, body: unknown, headers: 
 
 function rpcError(res: http.ServerResponse, status: number, code: number, message: string, headers: Record<string, string> = {}): void {
   json(res, status, { jsonrpc: '2.0', error: { code, message }, id: null }, headers);
+  res.destroy();
 }
 
 function readBody(req: http.IncomingMessage): Promise<string | null> {
@@ -97,13 +98,17 @@ export function createHttpServer(): http.Server {
       }
       const token = m[1];
       const tokenHash = hashToken(token);
-      logSuffix = ` tok=${tokenHash}`;
+      logSuffix = ` tok=${tokenHash.slice(0, 8)}`;
 
-      if (!/^application\/json/.test(req.headers['content-type'] || '')) {
-        rpcError(res, 415, -32600, 'Content-Type must be application/json'); return;
+      const verdict = allow(tokenHash);
+      if (verdict !== 'ok') {
+        const message = verdict === 'token'
+          ? 'Rate limit exceeded (60/min per token). Slow down.'
+          : 'Server-wide rate limit exceeded. Retry shortly.';
+        rpcError(res, 429, -32000, message, { 'Retry-After': '30' }); return;
       }
-      if (!allow(tokenHash)) {
-        rpcError(res, 429, -32000, 'Rate limit exceeded (60/min per token). Slow down.', { 'Retry-After': '30' }); return;
+      if (!/^application\/json/i.test(req.headers['content-type'] || '')) {
+        rpcError(res, 415, -32600, 'Content-Type must be application/json'); return;
       }
       const raw = await readBody(req);
       if (raw === null) { rpcError(res, 413, -32600, 'Body too large (limit 1 MiB)'); return; }
@@ -116,6 +121,7 @@ export function createHttpServer(): http.Server {
       const mcp = buildServer({ includeAdmin: false, includeLocalAuth: true, includeAccountSwitch: false });
       const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
       cors(res);
+      res.on('error', () => {});
       res.on('close', () => { transport.close().catch(() => {}); mcp.close().catch(() => {}); });
       await requestContext.run({ token }, async () => {
         await mcp.connect(transport);
@@ -129,6 +135,8 @@ export function createHttpServer(): http.Server {
   });
   server.headersTimeout = 10_000;
   server.requestTimeout = 120_000;
+  server.keepAliveTimeout = 65_000;
+  server.maxConnections = 1000;
   return server;
 }
 

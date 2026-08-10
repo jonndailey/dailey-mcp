@@ -20,7 +20,10 @@ test('healthz is open', async () => {
 test('POST /mcp without bearer → 401 with WWW-Authenticate', async () => {
   const r = await fetch(`${base}/mcp`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
   assert.equal(r.status, 401);
-  assert.match(r.headers.get('www-authenticate') ?? '', /resource_metadata=/);
+  assert.equal(
+    r.headers.get('www-authenticate'),
+    'Bearer resource_metadata="https://mcp.dailey.cloud/.well-known/oauth-protected-resource"',
+  );
   const body = await r.json();
   assert.equal(body.jsonrpc, '2.0');
 });
@@ -64,17 +67,21 @@ test('tools/list works with any bearer (no capi call), excludes admin/switch/tra
 });
 
 test('per-token rate limit trips at 61st request in a minute', async () => {
-  let last = 0;
-  for (let i = 0; i < 61; i++) {
+  for (let i = 0; i < 60; i++) {
     const r = await fetch(`${base}/mcp`, {
       method: 'POST',
       headers: { Authorization: 'Bearer ratelimit-test', 'Content-Type': 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', id: i, method: 'ping' }),
     });
-    last = r.status;
-    if (last === 429) break;
+    assert.notEqual(r.status, 429, `request ${i + 1}/60 should not be rate-limited`);
   }
-  assert.equal(last, 429);
+  const r61 = await fetch(`${base}/mcp`, {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ratelimit-test', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 60, method: 'ping' }),
+  });
+  assert.equal(r61.status, 429);
+  assert.ok(r61.headers.get('retry-after'), 'Retry-After header should be present on 429');
 });
 
 test('whoami round-trip with a real token', { skip: !process.env.DAILEY_TEST_TOKEN }, async () => {
