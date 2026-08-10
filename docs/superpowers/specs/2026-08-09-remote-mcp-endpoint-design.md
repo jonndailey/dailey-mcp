@@ -30,10 +30,18 @@ One repo (`dailey-mcp`), two entries sharing one assembly:
 3. No token validation at the MCP layer — a bad token surfaces as capi's 401 through the existing `formatError` path on first tool call.
 Zero changes to the 41 tool modules.
 
-## Security
+## Security (v1 posture — reviewed and expanded 2026-08-09 at Jonny's direction)
+**Core property: the server is credential-free.** It holds no API keys, no DB creds, no service tokens — bearer tokens arrive per-request, live only in the request's AsyncLocalStorage, and die with it. A fully compromised pod yields no standing secrets. Preserve this property in all future changes (nothing secret in env/ConfigMap/Secret for this workload).
+
 - Admin + local-auth tools never registered on the remote surface.
 - In-process per-token rate limit: 60 requests/min (fixed window, `Map<tokenHash, {count, windowStart}>`); over-limit → HTTP 429. Token keys are sha256 truncations — raw tokens never held beyond the request, never logged.
-- No request-body logging; access log line = method, path, status, duration, token hash prefix (8 chars).
+- No request-body logging; access log line = method, path, status, duration, token hash prefix (8 chars), and tool name when the request is a tools/call (NEVER tool arguments — they can contain user secrets). Errors returned to clients never echo the token.
+- Request body cap: 1 MiB (413 above). Server timeouts: headersTimeout 10s, requestTimeout 120s (long tool calls allowed; slowloris not).
+- Global ceiling in addition to per-token: 600 req/min process-wide → 429 + `Retry-After` (protects capi from a runaway or distributed client).
+- CORS `*` is safe here BECAUSE auth is an explicit header (no cookies → no CSRF); revisit if cookie auth ever appears. Validate `Content-Type: application/json` on POST /mcp.
+- Container hardening: non-root `USER node`, `readOnlyRootFilesystem: true` in the deployment (SDK needs no disk writes), no added capabilities, `NODE_ENV=production`.
+- Dependency hygiene: `@modelcontextprotocol/sdk` pinned exact (no `^`); `npm audit --omit=dev` in the build (fail on critical).
+- Tool OUTPUTS are untrusted data to the calling model (they can contain customer-authored content from capi); nothing in this server treats them as instructions — inherent MCP posture, noted so future middleware doesn't.
 - **Active-account state (three moves, decided 2026-08-09 after review):**
   1. Remote surface registers the account-LIST tool but NOT the account-SWITCH tool (stateless mode has no session to remember it; a manager with two connectors could otherwise cross-wire accounts with valid creds). The list tool's remote description instructs "pass `account:` per call" (supported on every tool since v1.21.0).
   2. The AsyncLocalStorage store is `{ token: string, account?: string }`. `setActiveAccount()`/`getActiveAccount()` consult the ALS store FIRST (write/read request-scoped state when present) and fall through to the module global only when no store exists (stdio). Cross-user bleed becomes impossible by construction — any code path that "sets the account" inside a remote request affects only that request.
