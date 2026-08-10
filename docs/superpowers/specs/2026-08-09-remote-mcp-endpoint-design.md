@@ -33,7 +33,7 @@ Zero changes to the 41 tool modules.
 ## Security (v1 posture — reviewed and expanded 2026-08-09 at Jonny's direction)
 **Core property: the server is credential-free.** It holds no API keys, no DB creds, no service tokens — bearer tokens arrive per-request, live only in the request's AsyncLocalStorage, and die with it. A fully compromised pod yields no standing secrets. Preserve this property in all future changes (nothing secret in env/ConfigMap/Secret for this workload).
 
-- Admin + local-auth tools never registered on the remote surface.
+- Admin, account-switch, and project-transfer tools never registered on the remote surface (auth tools SHIP per the amended Decisions — pure API calls).
 - In-process per-token rate limit: 60 requests/min (fixed window, `Map<tokenHash, {count, windowStart}>`); over-limit → HTTP 429. Token keys are sha256 truncations — raw tokens never held beyond the request, never logged.
 - No request-body logging; access log line = method, path, status, duration, token hash prefix (8 chars), and tool name when the request is a tools/call (NEVER tool arguments — they can contain user secrets). Errors returned to clients never echo the token.
 - Request body cap: 1 MiB (413 above). Server timeouts: headersTimeout 10s, requestTimeout 120s (long tool calls allowed; slowloris not).

@@ -125,7 +125,7 @@ export function createHttpServer(): http.Server {
       if (raw === null) { rpcError(res, 413, -32600, 'Body too large (limit 1 MiB)'); return; }
       let parsed: unknown;
       try { parsed = JSON.parse(raw); } catch { rpcError(res, 400, -32700, 'Parse error'); return; }
-      const toolName = (parsed as any)?.method === 'tools/call' ? String((parsed as any)?.params?.name ?? '') : '';
+      const toolName = ((parsed as any)?.method === 'tools/call' ? String((parsed as any)?.params?.name ?? '') : '').replace(/[^\w.-]/g, '').slice(0, 64);
       if (toolName) logSuffix += ` tool=${toolName}`;
 
       // Stateless: fresh server+transport per request; identity lives in ALS.

@@ -25,11 +25,11 @@ test('two concurrent request contexts never see each other', async () => {
   await Promise.all([
     new Promise<void>((res) => requestContext.run({ token: 'a' }, () => {
       setActiveAccount('acct-a');
-      setTimeout(() => { seen.push(getActiveAccount()); res(); }, 20);
+      setTimeout(() => { seen.push(getActiveAccount()); assert.equal(resolveToken(), 'a'); res(); }, 20);
     })),
     new Promise<void>((res) => requestContext.run({ token: 'b' }, () => {
       setActiveAccount('acct-b');
-      setTimeout(() => { seen.push(getActiveAccount()); res(); }, 10);
+      setTimeout(() => { seen.push(getActiveAccount()); assert.equal(resolveToken(), 'b'); res(); }, 10);
     })),
   ]);
   assert.deepEqual(seen.sort(), ['acct-a', 'acct-b']);
