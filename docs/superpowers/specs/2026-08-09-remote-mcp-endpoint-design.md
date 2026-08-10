@@ -6,7 +6,7 @@ Approved by Jonny 2026-08-09 (brainstorm in ops session). v1 = bearer-token auth
 Expose the existing DOS MCP tools over streamable HTTP at `https://mcp.dailey.cloud` so remote-capable clients (Cursor, claude.ai, ChatGPT connectors) attach with a URL + DOS API token — no local install. The npm stdio package (`@daileyos/mcp-server`) keeps working unchanged.
 
 ## Decisions (locked)
-- **Tool surface:** everything except `registerAdminTools` and the local auth tools (`registerAuthTools` — device-login/config-file flows are meaningless remotely; remote auth IS the bearer token). capi remains the sole authorizer.
+- **Tool surface:** everything except `registerAdminTools` and the account-SWITCH tool. **AMENDED during implementation (2026-08-09):** `registerAuthTools` was originally excluded on the premise it held device-login/config flows — inspection shows its three tools (`dailey_whoami`, `dailey_auth_status`, `dailey_auth_enable`) are pure API calls, so they SHIP remotely (whoami/auth_status are how a remote user verifies their connection). The `includeLocalAuth` build flag remains for any future genuinely-local tool. Project-transfer tools also ship remotely (customer capability; capi-authorized consent flow). capi remains the sole authorizer.
 - **Tokens:** existing DOS API tokens (same value `DAILEY_API_TOKEN` takes today; users copy from the dashboard). No new token type in v1.
 - **Hosting:** normal DOS project (internal account), repo-first from this repo, domain `mcp.dailey.cloud`, 1 replica.
 - **Transport:** streamable HTTP, **stateless mode** (`sessionIdGenerator: undefined`) — all tools are request/response; restarts invisible; no session store.

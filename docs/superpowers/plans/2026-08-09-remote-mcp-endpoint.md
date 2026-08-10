@@ -11,7 +11,7 @@
 ## Global Constraints (from the spec — verbatim where quoted)
 
 - The server is **credential-free**: no secrets in env/ConfigMap/Secret for this workload; tokens exist only inside a request's ALS store. Never log tokens or tool arguments.
-- Remote surface: NO `registerAdminTools`, NO `registerAuthTools`, NO account-SWITCH tool; account-LIST tool stays and its remote description says to pass `account:` per call.
+- Remote surface: NO `registerAdminTools`, NO account-SWITCH tool; `registerAuthTools` SHIPS remotely (amended — pure API tools incl. dailey_whoami); account-LIST tool stays and its remote description says to pass `account:` per call.
 - Transport: streamable HTTP **stateless** (`sessionIdGenerator: undefined`); `GET /mcp` and `DELETE /mcp` → 405.
 - HTTP hardening: body cap 1 MiB → 413; `headersTimeout` 10s; `requestTimeout` 120s; per-token limit 60 req/min → 429; global 600 req/min → 429 + `Retry-After`; POST /mcp requires `Content-Type: application/json`.
 - 401 body is JSON-RPC-shaped with header `WWW-Authenticate: Bearer resource_metadata="https://mcp.dailey.cloud/.well-known/oauth-protected-resource"`.
@@ -171,7 +171,7 @@ git commit -m "feat(context): request-scoped token/account via AsyncLocalStorage
 
 **Interfaces:**
 - Consumes: all existing `registerXxxTools(server)` functions; `OWN_VERSION` from `./version.js`.
-- Produces: `buildServer(opts: BuildOptions): McpServer` and `interface BuildOptions { includeAdmin: boolean; includeLocalAuth: boolean; includeAccountSwitch: boolean; instructions?: string }` from `src/server.ts`. Task 3 calls `buildServer({ includeAdmin: false, includeLocalAuth: false, includeAccountSwitch: false })`.
+- Produces: `buildServer(opts: BuildOptions): McpServer` and `interface BuildOptions { includeAdmin: boolean; includeLocalAuth: boolean; includeAccountSwitch: boolean; instructions?: string }` from `src/server.ts`. Task 3 calls `buildServer({ includeAdmin: false, includeLocalAuth: true, includeAccountSwitch: false })` (AMENDED: auth.ts tools are pure API calls and ship remotely — see spec amendment).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -510,7 +510,7 @@ export function createHttpServer(): http.Server {
       if (toolName) logSuffix += ` tool=${toolName}`;
 
       // Stateless: fresh server+transport per request; identity lives in ALS.
-      const mcp = buildServer({ includeAdmin: false, includeLocalAuth: false, includeAccountSwitch: false });
+      const mcp = buildServer({ includeAdmin: false, includeLocalAuth: true, includeAccountSwitch: false });
       const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
       cors(res);
       res.on('close', () => { transport.close().catch(() => {}); mcp.close().catch(() => {}); });
