@@ -11,14 +11,15 @@
     "build": "tsc && chmod +x dist/index.js",
     "start": "node dist/index.js",
     "test": "tsx --test --experimental-test-module-mocks test/*.test.ts",
-    "prepublishOnly": "npm run build && test -x dist/index.js"
+    "prepublishOnly": "npm run build && test -x dist/index.js",
+    "start:http": "node dist/http.js"
   },
   "publishConfig": {
     "access": "public"
   },
   "dependencies": {
     "@daileyos/wp-bundle": "^0.1.0",
-    "@modelcontextprotocol/sdk": "^1.12.1",
+    "@modelcontextprotocol/sdk": "1.27.1",
     "zod": "^3.24.4"
   },
   "devDependencies": {
