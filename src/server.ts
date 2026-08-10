@@ -159,8 +159,10 @@ export function buildServer(opts: BuildOptions): McpServer {
   registerExecRunTools(server);
 
   // Admin-only — customer onboarding, project transfer
-  if (opts.includeAdmin) registerAdminTools(server);
-  registerProjectTransferTools(server);
+  if (opts.includeAdmin) {
+    registerAdminTools(server);
+    registerProjectTransferTools(server);
+  }
 
   // CLI assist
   registerCliTools(server);

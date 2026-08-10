@@ -24,6 +24,7 @@ test('remote surface excludes admin, local-auth, and account-switch tools', asyn
   assert.ok(!names.includes('dailey_auth_enable'), 'local auth tool leaked');
   assert.ok(!names.includes('dailey_use_account'), 'account switch tool leaked');
   assert.ok(names.some((n) => n.includes('account')), 'account LIST tool should remain');
+  assert.ok(!names.includes('dailey_project_transfer_plan'), 'project-transfer tool leaked to remote surface');
 });
 
 test('stdio surface includes everything', async () => {
@@ -31,4 +32,5 @@ test('stdio surface includes everything', async () => {
   assert.ok(names.some((n) => n.startsWith('dailey_admin')), 'admin tools missing on stdio surface');
   assert.ok(names.includes('dailey_use_account'), 'switch tool missing on stdio surface');
   assert.ok(names.includes('dailey_whoami'), 'local auth tools missing on stdio surface');
+  assert.ok(names.includes('dailey_project_transfer_plan'), 'project-transfer tool missing on stdio surface');
 });
