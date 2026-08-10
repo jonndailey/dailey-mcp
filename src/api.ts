@@ -2,6 +2,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
 import { OWN_VERSION } from './version.js';
+import { requestContext } from './context.js';
 
 const API_URL = process.env.DAILEY_API_URL || 'https://os.dailey.cloud/api';
 const DAILEY_EMAIL = process.env.DAILEY_EMAIL;
@@ -42,6 +43,8 @@ const ENV_TOKEN = process.env.DAILEY_API_TOKEN || '';
 let refreshedToken = '';
 
 export function resolveToken(): string {
+  const ctx = requestContext.getStore();
+  if (ctx) return ctx.token;
   if (ENV_TOKEN) return ENV_TOKEN;
   if (refreshedToken) return refreshedToken;
   return readCliStoredToken() || '';
@@ -58,10 +61,15 @@ export function resolveToken(): string {
 let activeAccount: string | undefined;
 
 export function setActiveAccount(slugOrId: string | undefined): void {
-  activeAccount = slugOrId && slugOrId.trim() ? slugOrId.trim() : undefined;
+  const v = slugOrId && slugOrId.trim() ? slugOrId.trim() : undefined;
+  const ctx = requestContext.getStore();
+  if (ctx) { ctx.account = v; return; } // request-scoped: dies with the request
+  activeAccount = v;
 }
 
 export function getActiveAccount(): string | undefined {
+  const ctx = requestContext.getStore();
+  if (ctx) return ctx.account;
   return activeAccount;
 }
 
