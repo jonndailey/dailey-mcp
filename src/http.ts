@@ -12,6 +12,10 @@ const GLOBAL_LIMIT = 600;       // req/min
 const RESOURCE = 'https://mcp.dailey.cloud';
 const AUTH_SERVER = 'https://core.dailey.cloud';
 
+// In-flight cap: each request retains a ~1.2MB McpServer until close; 50 × ~1.2MB bounds worst-case heap under slow tool calls (512Mi pod). Security-review dissent 2026-08-09.
+export const MAX_INFLIGHT = 50;
+let inflight = 0;
+
 // ── fixed-window rate limiting ──────────────────────────────────────────────
 const tokenWindows = new Map<string, { count: number; windowStart: number }>();
 let globalWindow = { count: 0, windowStart: Date.now() };
@@ -107,6 +111,13 @@ export function createHttpServer(): http.Server {
           : 'Server-wide rate limit exceeded. Retry shortly.';
         rpcError(res, 429, -32000, message, { 'Retry-After': '30' }); return;
       }
+      if (inflight >= MAX_INFLIGHT) {
+        rpcError(res, 503, -32000, 'Server busy (too many concurrent requests). Retry shortly.', { 'Retry-After': '5' });
+        return;
+      }
+      inflight++;
+      const done = () => { inflight = Math.max(0, inflight - 1); };
+      res.once('close', done);
       if (!/^application\/json/i.test(req.headers['content-type'] || '')) {
         rpcError(res, 415, -32600, 'Content-Type must be application/json'); return;
       }
@@ -138,6 +149,10 @@ export function createHttpServer(): http.Server {
   server.keepAliveTimeout = 65_000;
   server.maxConnections = 1000;
   return server;
+}
+
+export function getInflight(): number {
+  return inflight;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

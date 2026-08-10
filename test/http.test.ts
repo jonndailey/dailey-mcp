@@ -1,7 +1,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Server } from 'node:http';
-import { createHttpServer } from '../src/http.js';
+import { createHttpServer, MAX_INFLIGHT, getInflight } from '../src/http.js';
 
 let server: Server; let base: string;
 before(async () => {
@@ -95,4 +95,9 @@ test('whoami round-trip with a real token', { skip: !process.env.DAILEY_TEST_TOK
   const out = await client.callTool({ name: 'dailey_whoami', arguments: {} });
   assert.ok(JSON.stringify(out).length > 0);
   await client.close();
+});
+
+test('in-flight cap constants and cleanup', () => {
+  assert.equal(MAX_INFLIGHT, 50, 'MAX_INFLIGHT should be 50');
+  assert.equal(getInflight(), 0, 'inflight counter should be 0 after all requests completed (no leak)');
 });
