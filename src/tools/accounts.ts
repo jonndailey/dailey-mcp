@@ -18,7 +18,7 @@ const AUTH_REQUIRED_ERROR = {
   error_code: 'DAILEY_AUTH_REQUIRED',
   message: 'Not authenticated',
   remediation: 'Run `dailey auth setup` in your terminal',
-  help_url: 'https://docs.dailey.cloud/auth',
+  help_url: 'https://docs.dailey.cloud/docs/mcp/',
 };
 
 export function registerAccountTools(

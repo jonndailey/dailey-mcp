@@ -164,11 +164,14 @@ export function formatError(res: ApiResponse): string {
   // clients (and agents reading tool output) get a machine-readable signal with
   // a clear remediation path rather than a generic "Error (401): ..." string.
   if (res.status === 401 || res.status === 403) {
+    // help_url was https://docs.dailey.cloud/auth, which is a 404 — the agent
+    // was handing customers a dead link at the exact moment they were stuck
+    // (2026-08-21 MCP onboarding audit). Both values below are verified pages.
     return JSON.stringify({
       error_code: 'DAILEY_AUTH_REQUIRED',
       message: 'Not authenticated',
-      remediation: 'Run `dailey auth setup` in your terminal',
-      help_url: 'https://docs.dailey.cloud/auth',
+      remediation: 'Run `dailey login` then `dailey mcp setup` in your terminal, then reconnect this client',
+      help_url: 'https://docs.dailey.cloud/docs/mcp/',
     }, null, 2);
   }
 
