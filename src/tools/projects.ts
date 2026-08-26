@@ -13,6 +13,8 @@ interface Project {
   created_at?: string;
   url?: string;
   needs_database?: boolean;
+  // POST /projects echoes the provisioned DB as an object, not needs_database
+  database?: { type?: string; host?: string; database?: string } | null;
 }
 
 export function registerProjectTools(server: McpServer) {
@@ -205,7 +207,7 @@ export function registerProjectTools(server: McpServer) {
           `Repo:     ${p.repo_url}`,
           ...(p.build_id ? [`Build:    ${p.build_id} (auto-queued — watch with dailey_deploy_status)`] : []),
           `Branch:   ${p.branch || 'main'}`,
-          `Database: ${p.needs_database ? 'yes' : 'no'}`,
+          `Database: ${p.database ? `${p.database.type || 'provisioned'} (${p.database.database || p.database.host || 'ready'})` : 'none'}`,
         ].join('\n'),
       );
     },
