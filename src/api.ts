@@ -254,6 +254,29 @@ export function formatThrownError(err: unknown): string {
   return hint ? `Error: ${message}\n→ Remediation: ${hint}` : `Error: ${message}`;
 }
 
+// Project IDs are UUID-shaped (hex characters + hyphens) everywhere the platform
+// issues them — the same "looks like an ID" gate diagnose.ts already used to
+// decide whether to try an ID lookup before falling back to slug/name. Several
+// tools interpolate `project_id` straight into a URL path template
+// (`/projects/${project_id}/...`) with no encodeURIComponent — an unvalidated
+// value containing `../` segments gets collapsed by the WHATWG URL parser
+// fetch() uses internally, letting the request escape the intended
+// `/api/projects/:id/...` prefix entirely (verified: `../../admin/x` turns
+// `https://os.dailey.cloud/api/projects/../../admin/x/database` into
+// `https://os.dailey.cloud/admin/x/database`). Validating here, before any
+// apiRequest call, closes that off. [dailey-mcp:3]
+const PROJECT_ID_PATTERN = /^[0-9a-f-]{8,}$/i;
+
+export function isValidProjectId(id: string): boolean {
+  return PROJECT_ID_PATTERN.test(id);
+}
+
+export function invalidProjectIdResult(id: string) {
+  return textResult(
+    `Error: "${id}" is not a valid project ID. Expected a UUID-shaped id (hex characters and hyphens, 8+ chars). If you have a slug or name instead of an ID, resolve it first (e.g. via dailey_list_projects or dailey_diagnose, which accept either).`,
+  );
+}
+
 export function textResult(text: string) {
   return { content: [{ type: 'text' as const, text }] };
 }

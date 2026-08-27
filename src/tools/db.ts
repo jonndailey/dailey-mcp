@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { apiRequest, formatError, textResult } from '../api.js';
+import { apiRequest, formatError, textResult, isValidProjectId, invalidProjectIdResult } from '../api.js';
 
 interface DatabaseInfo {
   host?: string;
@@ -52,6 +52,7 @@ export function registerDbTools(server: McpServer) {
     'Get database connection info for a project',
     { project_id: z.string().describe('The project ID') },
     async ({ project_id }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const res = await apiRequest<DatabaseInfo>('GET', `/projects/${project_id}/database`);
       if (!res.ok) return textResult(formatError(res));
 
@@ -79,6 +80,7 @@ export function registerDbTools(server: McpServer) {
     'Inspect the schema of a project database',
     { project_id: z.string().describe('The project ID') },
     async ({ project_id }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const res = await apiRequest<DatabaseSchemaResponse>('GET', `/projects/${project_id}/database/schema`);
       if (!res.ok) return textResult(formatError(res));
 
@@ -117,6 +119,7 @@ export function registerDbTools(server: McpServer) {
       limit: z.number().int().min(1).max(1000).optional().describe('Auto-limit for SELECT/WITH queries without LIMIT'),
     },
     async ({ project_id, sql, limit }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const body: Record<string, unknown> = { sql };
       if (limit !== undefined) body.limit = limit;
       const res = await apiRequest<DatabaseQueryResponse>('POST', `/projects/${project_id}/database/recall`, body);
@@ -151,6 +154,7 @@ export function registerDbTools(server: McpServer) {
       sql: z.string().describe('SQL migration to validate (can contain multiple statements separated by ;)'),
     },
     async ({ project_id, sql }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const res = await apiRequest<any>('POST', `/projects/${project_id}/database/validate`, { sql });
       if (!res.ok) return textResult(formatError(res));
 
@@ -200,6 +204,7 @@ export function registerDbTools(server: McpServer) {
       session_id: z.string().optional().describe('Session ID to close (required for close)'),
     },
     async ({ project_id, action, session_id }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       if (action === 'open') {
         const res = await apiRequest<any>('POST', `/projects/${project_id}/database/tunnel`);
         if (!res.ok) return textResult(formatError(res));
@@ -266,6 +271,7 @@ export function registerDbTools(server: McpServer) {
     'Show migration status for a project database',
     { project_id: z.string().describe('The project ID') },
     async ({ project_id }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const res = await apiRequest<DatabaseMigrationsResponse>('GET', `/projects/${project_id}/database/migrations`);
       if (!res.ok) return textResult(formatError(res));
 
@@ -301,6 +307,7 @@ export function registerDbTools(server: McpServer) {
       batch_size: z.number().int().optional().describe('Rows per write batch (default 500)'),
     },
     async ({ project_id, table, mode, format, payload, conflict_keys, dry_run, confirm_token, allow_extra_columns, batch_size }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       if (!dry_run && !confirm_token) {
         return textResult('Must pass either dry_run=true (validate) or confirm_token (commit). Two-phase commit is required.');
       }
@@ -345,6 +352,7 @@ export function registerDbTools(server: McpServer) {
       confirm: z.boolean().optional().describe('Required (true) when sql contains destructive statements like DROP TABLE, TRUNCATE, or DELETE without WHERE. First call without confirm to see the destructive list; re-call with confirm=true to execute.'),
     },
     async ({ project_id, sql, confirm }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const res = await apiRequest<any>('POST', `/projects/${project_id}/database/exec`, {
         sql,
         confirm: !!confirm,
