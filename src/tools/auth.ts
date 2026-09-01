@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { apiRequest, formatError, textResult, jsonResult, getActiveAccount } from '../api.js';
+import { apiRequest, formatError, textResult, jsonResult, getActiveAccount, isValidProjectId, invalidProjectIdResult } from '../api.js';
 
 interface ManagedAccount {
   managed_customer_id: string;
@@ -147,6 +147,7 @@ export function registerAuthTools(server: McpServer) {
         .describe('Require enrolled factors (e.g. passkey) at login. Defaults to false so password login still works.'),
     },
     async ({ project_id, enforce_enrolled_factors }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const res = await apiRequest<AuthEnableResponse>('POST', `/projects/${project_id}/auth/enable`, {
         enforce_enrolled_factors: enforce_enrolled_factors === true,
       });

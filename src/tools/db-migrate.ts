@@ -118,7 +118,7 @@ export function registerMigrateTools(server: McpServer) {
       if (allow_non_empty !== undefined) body.allow_non_empty = allow_non_empty;
       if (row_ceiling !== undefined) body.row_ceiling = row_ceiling;
 
-      const res = await apiRequest<StartResponse>('POST', `/projects/${project_id}/migrations`, body);
+      const res = await apiRequest<StartResponse>('POST', `/projects/${encodeURIComponent(project_id)}/migrations`, body);
       if (!res.ok) return textResult(formatError(res));
 
       const d = res.data;
@@ -144,7 +144,7 @@ export function registerMigrateTools(server: McpServer) {
     },
     async ({ project_id, id }) => {
       if (!id) {
-        const res = await apiRequest<ListResponse>('GET', `/projects/${project_id}/migrations`);
+        const res = await apiRequest<ListResponse>('GET', `/projects/${encodeURIComponent(project_id)}/migrations`);
         if (!res.ok) return textResult(formatError(res));
         const migrations = res.data.migrations || [];
         if (migrations.length === 0) return textResult('No migrations for this project.');
@@ -159,7 +159,7 @@ export function registerMigrateTools(server: McpServer) {
         return textResult(lines.join('\n'));
       }
 
-      const res = await apiRequest<GetResponse>('GET', `/projects/${project_id}/migrations/${id}`);
+      const res = await apiRequest<GetResponse>('GET', `/projects/${encodeURIComponent(project_id)}/migrations/${id}`);
       if (!res.ok) return textResult(formatError(res));
       return textResult(progressLines(res.data.migration).join('\n'));
     },
@@ -173,7 +173,7 @@ export function registerMigrateTools(server: McpServer) {
       id: z.string().describe('Migration id to confirm (must be awaiting_confirm)'),
     },
     async ({ project_id, id }) => {
-      const res = await apiRequest<ConfirmResponse>('POST', `/projects/${project_id}/migrations/${id}/confirm`);
+      const res = await apiRequest<ConfirmResponse>('POST', `/projects/${encodeURIComponent(project_id)}/migrations/${id}/confirm`);
       if (!res.ok) return textResult(formatError(res));
       const d = res.data;
       const lines = [
@@ -196,7 +196,7 @@ export function registerMigrateTools(server: McpServer) {
       id: z.string().describe('Migration id to cancel'),
     },
     async ({ project_id, id }) => {
-      const res = await apiRequest<CancelResponse>('POST', `/projects/${project_id}/migrations/${id}/cancel`);
+      const res = await apiRequest<CancelResponse>('POST', `/projects/${encodeURIComponent(project_id)}/migrations/${id}/cancel`);
       if (!res.ok) return textResult(formatError(res));
       const d = res.data;
       const lines = [

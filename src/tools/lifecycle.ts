@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { apiRequest, formatError, textResult } from '../api.js';
+import { apiRequest, formatError, textResult, isValidProjectId, invalidProjectIdResult } from '../api.js';
 
 interface PauseResponse {
   paused?: boolean;
@@ -22,6 +22,7 @@ export function registerLifecycleTools(server: McpServer) {
     'Pause a project — scales all processes to 0 replicas but preserves DB, storage, ingress, and the desired replica count. Use this instead of dailey_scale 0 when you want to temporarily stop a project without losing config.',
     { project_id: z.string().describe('The project ID') },
     async ({ project_id }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const res = await apiRequest<PauseResponse>('POST', `/projects/${project_id}/pause`);
       if (!res.ok) return textResult(formatError(res));
 
@@ -51,6 +52,7 @@ export function registerLifecycleTools(server: McpServer) {
     'Resume a paused project — scales processes back to their previous replica count.',
     { project_id: z.string().describe('The project ID') },
     async ({ project_id }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const res = await apiRequest<ResumeResponse>('POST', `/projects/${project_id}/resume`);
       if (!res.ok) return textResult(formatError(res));
 

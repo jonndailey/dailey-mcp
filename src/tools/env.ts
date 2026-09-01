@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { apiRequest, formatError, textResult } from '../api.js';
+import { apiRequest, formatError, textResult, isValidProjectId, invalidProjectIdResult } from '../api.js';
 
 interface EnvVar {
   key: string;
@@ -58,6 +58,7 @@ export function registerEnvTools(server: McpServer) {
       env_vars: z.record(z.string()).optional().describe('Flat object of env vars for set_many, e.g. { FOO: "bar", BAZ: "qux" }'),
     },
     async ({ project_id, action, key, value, env_vars }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       if (action === 'list') {
         const res = await apiRequest<{ env_vars: EnvVar[] }>('GET', `/projects/${project_id}/env`);
         if (!res.ok) return textResult(formatError(res));
@@ -148,6 +149,7 @@ export function registerEnvTools(server: McpServer) {
     "Returns every env var the project's pod will see at runtime, including platform-injected ones (S3_*, DATABASE_URL, etc.) — values redacted but lengths shown. Use this when debugging 'is the env var I expect actually present in the pod?'.",
     { project_id: z.string().describe('The project ID') },
     async ({ project_id }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const res = await apiRequest<RuntimeEnvListing>('GET', `/projects/${project_id}/env/runtime`);
       if (!res.ok) return textResult(formatError(res));
 

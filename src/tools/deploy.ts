@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { apiRequest, formatError, textResult } from '../api.js';
+import { apiRequest, formatError, textResult, isValidProjectId, invalidProjectIdResult } from '../api.js';
 
 interface LogsResponse {
   logs: string[];
@@ -23,6 +23,7 @@ export function registerDeployTools(server: McpServer) {
       tail: z.number().optional().describe('Number of log lines to fetch (default: 100)'),
     },
     async ({ project_id, tail }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const query = tail ? `?tail=${tail}` : '?tail=100';
       const res = await apiRequest<LogsResponse>('GET', `/projects/${project_id}/logs${query}`);
       if (!res.ok) return textResult(formatError(res));
@@ -41,6 +42,7 @@ export function registerDeployTools(server: McpServer) {
     'List recent deploys/builds for a project',
     { project_id: z.string().describe('The project ID') },
     async ({ project_id }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const res = await apiRequest<{ builds: Build[] }>('GET', `/projects/${project_id}/deploys`);
       if (!res.ok) return textResult(formatError(res));
 
@@ -73,6 +75,7 @@ export function registerDeployTools(server: McpServer) {
       build_id: z.string().describe('The build ID to rollback to'),
     },
     async ({ project_id, build_id }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const res = await apiRequest('POST', `/projects/${project_id}/rollback`, { build_id });
       if (!res.ok) return textResult(formatError(res));
       return textResult(`Rollback initiated for project ${project_id} to build ${build_id}.`);
@@ -84,6 +87,7 @@ export function registerDeployTools(server: McpServer) {
     'Check the deploy rate limit status for a project — deploys used vs. limit this hour, remaining, and minutes until the window resets. Worth calling before kicking off dailey_deploy in a debug loop or when iterating quickly, so you don\'t hit the hourly cap unexpectedly.',
     { project_id: z.string().describe('The project ID') },
     async ({ project_id }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const res = await apiRequest<any>('GET', `/projects/${project_id}/deploy-rate`);
       if (!res.ok) return textResult(formatError(res));
       const d = res.data;

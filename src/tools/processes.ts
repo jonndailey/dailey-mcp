@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { apiRequest, formatError, textResult } from '../api.js';
+import { apiRequest, formatError, textResult, isValidProjectId, invalidProjectIdResult } from '../api.js';
 
 interface Process {
   name: string;
@@ -43,6 +43,7 @@ export function registerProcessTools(server: McpServer) {
     'List processes defined in a project. For multi-process projects with a dailey.yaml manifest, returns each declared process (web/worker/release) with resource limits and status. For single-container projects (most Dailey OS projects), returns an empty list — use dailey_project_info and dailey_scale for resource management in that case.',
     { project_id: z.string().describe('The project ID') },
     async ({ project_id }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const res = await apiRequest<{ processes: Process[] }>('GET', `/projects/${project_id}/processes`);
       if (!res.ok) return textResult(formatError(res));
 
@@ -85,6 +86,7 @@ export function registerProcessTools(server: McpServer) {
       tail: z.number().int().min(1).max(2000).optional().describe('Number of log lines to fetch (default: 100)'),
     },
     async ({ project_id, process_name, tail }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const query = tail ? `?tail=${tail}` : '?tail=100';
       const res = await apiRequest<ProcessLogsResponse>(
         'GET',
@@ -106,6 +108,7 @@ export function registerProcessTools(server: McpServer) {
       process_name: z.string().describe('The process name to restart'),
     },
     async ({ project_id, process_name }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const res = await apiRequest(
         'POST',
         `/projects/${project_id}/processes/${encodeURIComponent(process_name)}/restart`,
@@ -123,6 +126,7 @@ export function registerProcessTools(server: McpServer) {
       process_name: z.string().describe('The process name'),
     },
     async ({ project_id, process_name }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const res = await apiRequest<ProcessMetricsResponse>(
         'GET',
         `/projects/${project_id}/processes/${encodeURIComponent(process_name)}/metrics`,
@@ -162,6 +166,7 @@ export function registerProcessTools(server: McpServer) {
       memory_mb: z.number().int().min(64).max(32768).optional().describe('Memory limit in MB (64-32768)'),
     },
     async ({ project_id, process_name, replicas, cpu_millicores, memory_mb }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const body: Record<string, number> = {};
       if (replicas !== undefined) body.replicas = replicas;
       if (cpu_millicores !== undefined) body.cpu_millicores = cpu_millicores;

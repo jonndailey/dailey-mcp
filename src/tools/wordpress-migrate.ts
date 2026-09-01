@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { existsSync } from 'node:fs';
 import { basename } from 'node:path';
-import { apiRequest, formatError, textResult } from '../api.js';
+import { apiRequest, formatError, textResult, isValidProjectId, invalidProjectIdResult } from '../api.js';
 import { putFileToPresignedUrl } from '../upload.js';
 
 interface StartResponse {
@@ -31,6 +31,7 @@ export function registerWordPressMigrateTools(server: McpServer) {
       migration_id: z.string().optional().describe('Migration ID — required for status'),
     },
     async ({ project_id, action, db_file, content_file, old_url, table_prefix, allow_unsafe, migration_id }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       if (action === 'status') {
         if (!migration_id) return textResult('migration_id is required for action=status');
         const res = await apiRequest<StatusResponse>('GET', `/projects/${project_id}/migrate/wordpress/${migration_id}`);

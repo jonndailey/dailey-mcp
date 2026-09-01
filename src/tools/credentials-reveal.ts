@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { apiRequest, formatError, textResult } from '../api.js';
+import { apiRequest, formatError, textResult, isValidProjectId, invalidProjectIdResult } from '../api.js';
 
 /**
  * Mask a credential value for display. Keeps the last 3 characters so the
@@ -25,6 +25,7 @@ export function registerCredentialRevealTools(server: McpServer) {
       emit_plaintext: z.boolean().optional().describe('If true, emits the cleartext credential into the response. Default false. Only set true when you understand the chat-log exposure. Rotate immediately afterward if the transcript will be shared.'),
     },
     async ({ project_id, key, password, emit_plaintext }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const pw = password || process.env.DAILEY_PASSWORD;
       if (!pw) {
         return textResult(

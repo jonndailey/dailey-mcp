@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { apiRequest, formatError, textResult } from '../api.js';
+import { apiRequest, formatError, textResult, isValidProjectId, invalidProjectIdResult } from '../api.js';
 
 interface ServiceLink {
   id: string;
@@ -24,6 +24,7 @@ export function registerLinkTools(server: McpServer) {
       link_id: z.string().optional().describe('Link ID to remove (remove)'),
     },
     async ({ project_id, action, target_project_id, env_key, link_id }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       if (action === 'list') {
         const res = await apiRequest<{ links: ServiceLink[] }>('GET', `/projects/${project_id}/links`);
         if (!res.ok) return textResult(formatError(res));

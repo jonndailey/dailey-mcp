@@ -43,7 +43,7 @@ export function registerEnvironmentTools(server: McpServer) {
       project: z.string().describe('The project ID or slug'),
     },
     async ({ project }) => {
-      const res = await apiRequest<EnvironmentsResponse>('GET', `/projects/${project}/environments`);
+      const res = await apiRequest<EnvironmentsResponse>('GET', `/projects/${encodeURIComponent(project)}/environments`);
       if (!res.ok) return textResult(formatError(res));
 
       const envs = res.data.environments;
@@ -84,7 +84,7 @@ export function registerEnvironmentTools(server: McpServer) {
         // Phase 1: preview
         const res = await apiRequest<ClonePreviewResponse>(
           'POST',
-          `/projects/${project}/wp/clone/preview`,
+          `/projects/${encodeURIComponent(project)}/wp/clone/preview`,
         );
         if (!res.ok) return textResult(formatError(res));
 
@@ -118,7 +118,7 @@ export function registerEnvironmentTools(server: McpServer) {
       // Phase 2: execute
       const res = await apiRequest<CloneExecuteResponse>(
         'POST',
-        `/projects/${project}/wp/clone`,
+        `/projects/${encodeURIComponent(project)}/wp/clone`,
         { confirm_token, confirmation: 'CLONE' },
       );
 

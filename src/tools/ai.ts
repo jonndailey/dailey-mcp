@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { apiRequest, formatError, textResult } from '../api.js';
+import { apiRequest, formatError, textResult, isValidProjectId, invalidProjectIdResult } from '../api.js';
 
 interface AiInfoResponse {
   project: { id: string; slug: string };
@@ -23,6 +23,7 @@ export function registerAiTools(server: McpServer) {
     'Show whether Dailey AI and Dailey Compute (GPU) are enabled for a project, whether their env vars are injected into the pod, and how to wire them up (the DAILEY_AI_*/DAILEY_COMPUTE_* env contract + integration snippets). Use this to see if Compute/AI is on or off for an app and how to implement the patterns. Enable with dailey_ai_enable / dailey_compute_enable.',
     { project_id: z.string().describe('The project ID') },
     async ({ project_id }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const res = await apiRequest<AiInfoResponse>('GET', `/projects/${project_id}/ai/info`);
       if (!res.ok) return textResult(formatError(res));
       const d = res.data;
@@ -64,6 +65,7 @@ export function registerAiTools(server: McpServer) {
     'Enable Dailey AI for a project. Mints a capability-scoped key and injects DAILEY_AI_BASE_URL/KEY/MODEL into the project env (applies on next deploy). The account-level AI feature must be on first; check dailey_ai_info.',
     { project_id: z.string().describe('The project ID') },
     async ({ project_id }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const res = await apiRequest('POST', `/projects/${project_id}/ai/enable`, {});
       if (!res.ok) return textResult(formatError(res));
       return textResult(`Dailey AI enabled.\n${JSON.stringify(res.data, null, 2)}\n\nRedeploy the project (dailey_deploy) to pick up the DAILEY_AI_* env vars.`);
@@ -75,6 +77,7 @@ export function registerAiTools(server: McpServer) {
     'Enable Dailey Compute (GPU) for a project. Mints a capability-scoped key and injects DAILEY_COMPUTE_URL/KEY into the project env (applies on next deploy). The account-level Compute feature must be on first; check dailey_ai_info.',
     { project_id: z.string().describe('The project ID') },
     async ({ project_id }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const res = await apiRequest('POST', `/projects/${project_id}/compute/enable`, {});
       if (!res.ok) return textResult(formatError(res));
       return textResult(`Dailey Compute enabled.\n${JSON.stringify(res.data, null, 2)}\n\nRedeploy the project (dailey_deploy) to pick up the DAILEY_COMPUTE_* env vars.`);

@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { apiRequest, formatError, textResult } from '../api.js';
+import { apiRequest, formatError, textResult, isValidProjectId, invalidProjectIdResult } from '../api.js';
 
 interface PlatformCapability {
   id: string;
@@ -34,6 +34,7 @@ export function registerPlatformTools(server: McpServer) {
     'Show the safe platform capabilities available to a project',
     { project_id: z.string().describe('The project ID') },
     async ({ project_id }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const res = await apiRequest<PlatformOverview>('GET', `/projects/${project_id}/platform`);
       if (!res.ok) return textResult(formatError(res));
 

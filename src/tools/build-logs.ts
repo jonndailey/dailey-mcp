@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { apiRequest, formatError, textResult } from '../api.js';
+import { apiRequest, formatError, textResult, isValidProjectId, invalidProjectIdResult } from '../api.js';
 
 interface Build {
   id: string;
@@ -29,6 +29,7 @@ export function registerBuildLogsTools(server: McpServer) {
       tail: z.number().int().min(1).max(5000).optional().describe('Return only the last N lines (default: full log)'),
     },
     async ({ project_id, build_id, tail }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       let targetBuildId = build_id;
 
       if (!targetBuildId) {

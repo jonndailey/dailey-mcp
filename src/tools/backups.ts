@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { apiRequest, formatError, textResult } from '../api.js';
+import { apiRequest, formatError, textResult, isValidProjectId, invalidProjectIdResult } from '../api.js';
 
 interface Backup {
   key: string;
@@ -25,6 +25,7 @@ export function registerBackupTools(server: McpServer) {
       backup_key: z.string().optional().describe('Backup key (required for restore/download)'),
     },
     async ({ project_id, action, backup_key }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       if (action === 'list') {
         const res = await apiRequest<BackupsResponse>('GET', `/projects/${project_id}/backups`);
         if (!res.ok) return textResult(formatError(res));

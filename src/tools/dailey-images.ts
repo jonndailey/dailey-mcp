@@ -74,7 +74,7 @@ export function registerDaileyImagesTools(server: McpServer) {
       if (n != null) body.n = n;
 
       const res = await apiRequest<GenerationsResponse>(
-        'POST', `/projects/${project}/images/generations`, body);
+        'POST', `/projects/${encodeURIComponent(project)}/images/generations`, body);
       if (!res.ok) return textResult(formatError(res));
 
       const d = res.data;
@@ -100,7 +100,7 @@ export function registerDaileyImagesTools(server: McpServer) {
     { project: z.string().describe('The project ID or slug') },
     async ({ project }) => {
       const res = await apiRequest<ImagesEnableResponse>(
-        'POST', `/projects/${project}/images/enable`, {});
+        'POST', `/projects/${encodeURIComponent(project)}/images/enable`, {});
       if (!res.ok) return textResult(formatError(res));
       const d = res.data;
       const lines = [
@@ -122,7 +122,7 @@ export function registerDaileyImagesTools(server: McpServer) {
     'Show whether Dailey Images (AI image generation) is enabled for a project, whether its DAILEY_IMAGE_* env vars are injected into the pod, the available tiers, and how to wire it up. Enable with dailey_images_enable.',
     { project: z.string().describe('The project ID or slug') },
     async ({ project }) => {
-      const res = await apiRequest<ImagesInfoResponse>('GET', `/projects/${project}/images/info`);
+      const res = await apiRequest<ImagesInfoResponse>('GET', `/projects/${encodeURIComponent(project)}/images/info`);
       if (!res.ok) return textResult(formatError(res));
       const d = res.data;
       const lines = [

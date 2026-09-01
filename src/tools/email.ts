@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { apiRequest, formatError, textResult } from '../api.js';
+import { apiRequest, formatError, textResult, isValidProjectId, invalidProjectIdResult } from '../api.js';
 
 // Dailey Email (pay-at-purchase, per project). Enable runs a $10/mo Stripe
 // Checkout — the customer-api returns { ok, pending:true, checkout_url } that the
@@ -34,6 +34,7 @@ export function registerEmailTools(server: McpServer) {
     'Enable Dailey Email ($10/mo, per project) so the app can send from <slug>@send.dailey.cloud. This is PAY-AT-PURCHASE and billing-owner-only: the normal response is a Stripe Checkout URL the user MUST open to pay $10/mo before email turns on — do NOT treat email as enabled until payment completes. The operator/internal path enables immediately (email_enabled:true). After it turns on, redeploy so DAILEY_EMAIL_* env is injected.',
     { project_id: z.string().describe('The project ID') },
     async ({ project_id }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const res = await apiRequest<EmailEnableResponse>('POST', `/projects/${project_id}/email/enable`, {});
       if (!res.ok) return textResult(formatError(res));
       const d = res.data;
@@ -66,6 +67,7 @@ export function registerEmailTools(server: McpServer) {
     'Disable Dailey Email for a project: cancels the $10/mo email_pro subscription, revokes the email key, and removes the DAILEY_EMAIL_* env vars. Billing-owner-only (a manager acting-as a managed account is denied).',
     { project_id: z.string().describe('The project ID') },
     async ({ project_id }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const res = await apiRequest<{ ok: boolean; email_enabled: boolean }>('DELETE', `/projects/${project_id}/email/enable`);
       if (!res.ok) return textResult(formatError(res));
       return textResult('Dailey Email disabled. The $10/mo subscription was cancelled and the DAILEY_EMAIL_* env vars removed.');
@@ -77,6 +79,7 @@ export function registerEmailTools(server: McpServer) {
     'Show Dailey Email status for a project: whether email is enabled, the From address (<slug>@send.dailey.cloud), any suspension, and current-month usage (messages sent, bounced, complained).',
     { project_id: z.string().describe('The project ID') },
     async ({ project_id }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const res = await apiRequest<EmailStatusResponse>('GET', `/projects/${project_id}/email`);
       if (!res.ok) return textResult(formatError(res));
       const d = res.data;

@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { apiRequest, textResult, formatError } from '../api.js';
+import { apiRequest, textResult, formatError, isValidProjectId, invalidProjectIdResult } from '../api.js';
 
 export function registerExecRunTools(server: McpServer) {
   server.tool(
@@ -13,6 +13,7 @@ export function registerExecRunTools(server: McpServer) {
       timeout_seconds: z.number().int().optional().describe('Command timeout in seconds (default 60, max 300)'),
     },
     async ({ project_id, command, process: processName, timeout_seconds }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const body: any = { command };
       if (processName) body.process = processName;
       if (timeout_seconds) body.timeout_seconds = timeout_seconds;
@@ -46,6 +47,7 @@ export function registerExecRunTools(server: McpServer) {
       command: z.array(z.string()).describe('Command as argv array, e.g. ["node","prisma/seed.mjs"] or ["python","-m","manage","migrate"]'),
     },
     async ({ project_id, command }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const res = await apiRequest<any>('POST', `/projects/${project_id}/run`, { command });
       if (!res.ok) return textResult(formatError(res));
       const d = res.data;
@@ -70,6 +72,7 @@ export function registerExecRunTools(server: McpServer) {
       job_name: z.string().describe('Job name returned by dailey_run (e.g. "myapp-run-abc12345")'),
     },
     async ({ project_id, job_name }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const res = await apiRequest<any>('GET', `/projects/${project_id}/run/${job_name}/logs`);
       if (!res.ok) return textResult(formatError(res));
       const d = res.data;

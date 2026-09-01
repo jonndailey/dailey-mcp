@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { apiRequest, formatError, textResult, jsonResult } from '../api.js';
+import { apiRequest, formatError, textResult, jsonResult, isValidProjectId, invalidProjectIdResult } from '../api.js';
 
 interface AccountUsageResponse {
   month: string;
@@ -54,6 +54,7 @@ export function registerUsageTools(server: McpServer) {
       period: z.string().optional().describe('Time period (e.g., 7d, 30d). Default: 7d'),
     },
     async ({ project_id, period }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const query = `?period=${period || '7d'}`;
       const res = await apiRequest<Record<string, unknown>>('GET', `/projects/${project_id}/usage${query}`);
       if (!res.ok) return textResult(formatError(res));

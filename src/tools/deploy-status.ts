@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { apiRequest, formatError, textResult } from '../api.js';
+import { apiRequest, formatError, textResult, isValidProjectId, invalidProjectIdResult } from '../api.js';
 
 interface DeployStatus {
   mode?: 'git' | 'image';
@@ -141,6 +141,7 @@ export function registerDeployStatusTools(server: McpServer) {
     'Check deploy status for a project: whether a new version exists, whether a build is in progress, the current progress stage (⚙📦🚀✅🎉) if building, and whether it is safe to trigger a new deploy. Call this AFTER dailey_deploy_multi or dailey_run_image to watch progress.',
     { project_id: z.string().describe('The project ID') },
     async ({ project_id }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const statusRes = await apiRequest<DeployStatus>('GET', `/projects/${project_id}/deploy-status`);
       if (!statusRes.ok) return textResult(formatError(statusRes));
 

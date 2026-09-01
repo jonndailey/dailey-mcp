@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { apiRequest, textResult, formatError } from '../api.js';
+import { apiRequest, textResult, formatError, isValidProjectId, invalidProjectIdResult } from '../api.js';
 
 export function registerSupportTools(server: McpServer) {
   server.tool(
@@ -14,6 +14,7 @@ export function registerSupportTools(server: McpServer) {
       severity: z.enum(['low', 'medium', 'high', 'critical']).optional().describe('Impact level: low (minor inconvenience), medium (feature broken), high (app down), critical (data loss or security). Default: medium'),
     },
     async ({ project_id, description, error_text, steps_tried, severity }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const body: Record<string, unknown> = { description };
       if (error_text) body.error_text = error_text;
       if (steps_tried) body.steps_tried = steps_tried;
