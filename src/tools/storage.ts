@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { apiRequest, formatError, textResult } from '../api.js';
+import { apiRequest, formatError, textResult, isValidProjectId, invalidProjectIdResult } from '../api.js';
 
 interface StorageInfoResponse {
   project: {
@@ -67,6 +67,7 @@ export function registerStorageTools(server: McpServer) {
     'Returns the project\'s storage binding (bucket, prefix, region) AND the SDK env-var convention for server-side integration. For server-side apps in your Dailey-deployed pod: install an S3 SDK and use the auto-injected S3_* env vars (S3_ENDPOINT, S3_REGION, S3_BUCKET_NAME, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, S3_SESSION_TOKEN, S3_KEY_PREFIX). For browser-side flows: use dailey_storage_presign_upload/download to mint URLs.',
     { project_id: z.string().describe('The project ID') },
     async ({ project_id }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const res = await apiRequest<StorageInfoResponse>('GET', `/projects/${project_id}/storage`);
       if (!res.ok) return textResult(formatError(res));
 
@@ -137,6 +138,7 @@ export function registerStorageTools(server: McpServer) {
       continuation_token: z.string().optional().describe('Token for the next page of objects'),
     },
     async ({ project_id, prefix, limit, continuation_token }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const params = new URLSearchParams();
       if (prefix) params.set('prefix', prefix);
       if (typeof limit === 'number') params.set('limit', String(limit));
@@ -187,6 +189,7 @@ export function registerStorageTools(server: McpServer) {
       expires_in_seconds: z.number().int().min(60).max(3600).optional().describe('Optional URL TTL'),
     },
     async ({ project_id, key, content_type, content_length_bytes, expires_in_seconds }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const body: Record<string, unknown> = { key };
       if (content_type) body.content_type = content_type;
       if (typeof content_length_bytes === 'number') body.content_length_bytes = content_length_bytes;
@@ -217,6 +220,7 @@ export function registerStorageTools(server: McpServer) {
     'Enable object storage on an existing project that was created without it, OR fix a project where storage was enabled but S3_* env vars are missing from the pod (secret_injected=false from dailey_storage_info). Provisions R2 credentials, creates the k8s secret, and patches the running deployment so pods pick up S3_* vars immediately. A redeploy is not required after calling this.',
     { project_id: z.string().describe('The project ID') },
     async ({ project_id }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const res = await apiRequest<{ ok: boolean; message: string; prefix: string }>(
         'POST',
         `/projects/${project_id}/storage/enable`,
@@ -257,6 +261,7 @@ export function registerStorageTools(server: McpServer) {
       expires_in_seconds: z.number().int().min(60).max(3600).optional().describe('Optional URL TTL'),
     },
     async ({ project_id, key, download_name, expires_in_seconds }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const body: Record<string, unknown> = { key };
       if (download_name) body.download_name = download_name;
       if (typeof expires_in_seconds === 'number') body.expires_in_seconds = expires_in_seconds;

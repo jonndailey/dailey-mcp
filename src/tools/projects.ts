@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { apiRequest, formatError, textResult } from '../api.js';
+import { apiRequest, formatError, textResult, isValidProjectId, invalidProjectIdResult } from '../api.js';
 
 interface Project {
   id: string;
@@ -55,6 +55,7 @@ export function registerProjectTools(server: McpServer) {
     'Get detailed info about a project including linked services',
     { project_id: z.string().describe('The project ID') },
     async ({ project_id }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const res = await apiRequest<any>('GET', `/projects/${project_id}`);
       if (!res.ok) return textResult(formatError(res));
 
@@ -91,6 +92,7 @@ export function registerProjectTools(server: McpServer) {
     'List all services in a multi-container project',
     { project_id: z.string().describe('The project ID') },
     async ({ project_id }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const res = await apiRequest<any>('GET', `/projects/${project_id}`);
       if (!res.ok) return textResult(formatError(res));
 
@@ -129,6 +131,7 @@ export function registerProjectTools(server: McpServer) {
       })).optional().describe('Services to deploy (if omitted, deploys all detected services)'),
     },
     async ({ project_id, selected_services }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       // If no services provided, analyze first to discover them
       let services = selected_services;
       if (!services) {
@@ -247,6 +250,7 @@ export function registerProjectTools(server: McpServer) {
       confirm: z.boolean().optional().describe('MUST be true to actually delete. Default false — returns preview only.'),
     },
     async ({ project_id, confirm }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       if (!confirm) {
         // Preview what would be deleted.
         const info = await apiRequest<any>('GET', `/projects/${project_id}`);

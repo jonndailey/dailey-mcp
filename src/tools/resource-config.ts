@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { apiRequest, formatError, textResult } from '../api.js';
+import { apiRequest, formatError, textResult, isValidProjectId, invalidProjectIdResult } from '../api.js';
 
 interface ResourceConfigResponse {
   cpu?: number;
@@ -39,6 +39,7 @@ export function registerResourceConfigTools(server: McpServer) {
       replicas: z.number().int().min(0).max(20).optional().describe('Replicas. Used by set.'),
     },
     async ({ project_id, action, cpu, memory_mb, storage_gb, replicas }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       if (action === 'get') {
         const res = await apiRequest<ResourceConfigResponse>('GET', `/projects/${project_id}/resource-config`);
         if (!res.ok) return textResult(formatError(res));

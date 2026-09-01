@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { apiRequest, textResult, jsonResult, formatError } from '../api.js';
+import { apiRequest, textResult, jsonResult, formatError, isValidProjectId, invalidProjectIdResult } from '../api.js';
 
 interface Snapshot {
   id: string;
@@ -71,6 +71,7 @@ export function registerWordPressSnapshotTools(server: McpServer) {
       project_id: z.string().describe('The project ID'),
     },
     async ({ project_id }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const res = await apiRequest<SnapshotsResponse>('GET', `/projects/${project_id}/wp/snapshots`);
       if (!res.ok) return textResult(formatError(res));
 
@@ -103,6 +104,7 @@ export function registerWordPressSnapshotTools(server: McpServer) {
       label: z.string().optional().describe('Optional human label; labeled points are kept until deleted (never auto-expire)'),
     },
     async ({ project_id, label }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const res = await apiRequest<SnapshotStartResponse>('POST', `/projects/${project_id}/wp/snapshot`, label ? { label } : undefined);
       if (!res.ok) return textResult(formatError(res));
 
@@ -124,6 +126,7 @@ export function registerWordPressSnapshotTools(server: McpServer) {
       ),
     },
     async ({ project_id, snapshot_id, confirm_token }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       if (!confirm_token) {
         // Phase 1: preview
         const res = await apiRequest<RestorePreviewResponse>(
@@ -194,6 +197,7 @@ export function registerWordPressSnapshotTools(server: McpServer) {
       operation_id: z.string().describe('The operation ID'),
     },
     async ({ project_id, operation_id }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const res = await apiRequest<OperationResponse>(
         'GET',
         `/projects/${project_id}/wp/operations/${operation_id}`,

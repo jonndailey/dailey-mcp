@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { apiRequest, formatError, textResult } from '../api.js';
+import { apiRequest, formatError, textResult, isValidProjectId, invalidProjectIdResult } from '../api.js';
 
 interface ScaleResponse {
   scaled?: boolean;
@@ -17,6 +17,7 @@ export function registerScaleTools(server: McpServer) {
       replicas: z.number().describe('Number of replicas to scale to'),
     },
     async ({ project_id, replicas }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const res = await apiRequest<ScaleResponse>('POST', `/projects/${project_id}/scale`, { replicas });
       if (!res.ok) return textResult(formatError(res));
 

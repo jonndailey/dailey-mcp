@@ -66,6 +66,8 @@ test('action=analyze returns the BundleReport and issues no upload/run calls', a
       },
       formatError: (res: any) => JSON.stringify(res),
       textResult: (text: string) => ({ content: [{ type: 'text' as const, text }] }),
+      isValidProjectId: (id: string) => /^[0-9a-f-]{8,}$/i.test(id),
+      invalidProjectIdResult: (id: string) => ({ content: [{ type: 'text' as const, text: `invalid project id: ${id}` }] }),
     },
   });
   t.mock.module('../src/upload.js', {
@@ -117,6 +119,8 @@ test('action=migrate refuses on a blocked verdict without allow_unsafe, before a
       },
       formatError: (res: any) => JSON.stringify(res),
       textResult: (text: string) => ({ content: [{ type: 'text' as const, text }] }),
+      isValidProjectId: (id: string) => /^[0-9a-f-]{8,}$/i.test(id),
+      invalidProjectIdResult: (id: string) => ({ content: [{ type: 'text' as const, text: `invalid project id: ${id}` }] }),
     },
   });
   t.mock.module('../src/upload.js', {
@@ -192,6 +196,8 @@ test('action=migrate happy path calls provision-target -> start -> PUT x2 -> sca
       },
       formatError: (res: any) => JSON.stringify(res),
       textResult: (text: string) => ({ content: [{ type: 'text' as const, text }] }),
+      isValidProjectId: (id: string) => /^[0-9a-f-]{8,}$/i.test(id),
+      invalidProjectIdResult: (id: string) => ({ content: [{ type: 'text' as const, text: `invalid project id: ${id}` }] }),
     },
   });
   t.mock.module('../src/upload.js', {

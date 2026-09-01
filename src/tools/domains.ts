@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { apiRequest, formatError, textResult } from '../api.js';
+import { apiRequest, formatError, textResult, isValidProjectId, invalidProjectIdResult } from '../api.js';
 
 interface Domain {
   hostname: string;
@@ -48,6 +48,7 @@ export function registerDomainTools(server: McpServer) {
       domain: z.string().optional().describe('Domain name (required for add/remove/dns_check/cert_status)'),
     },
     async ({ project_id, action, domain }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       if (action === 'list') {
         const res = await apiRequest<{ domains: Domain[] }>('GET', `/projects/${project_id}/domains`);
         if (!res.ok) return textResult(formatError(res));

@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { apiRequest, formatError, textResult } from '../api.js';
+import { apiRequest, formatError, textResult, isValidProjectId, invalidProjectIdResult } from '../api.js';
 
 export function registerImageTools(server: McpServer) {
   // Deploy a Docker image
@@ -170,6 +170,7 @@ export function registerImageTools(server: McpServer) {
       project_id: z.string().describe('The project ID'),
     },
     async ({ project_id }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const res = await apiRequest<{ credentials: any[] }>('GET', `/projects/${project_id}/credentials`);
       if (!res.ok) return textResult(formatError(res));
 
@@ -194,6 +195,7 @@ export function registerImageTools(server: McpServer) {
       project_id: z.string().describe('The project ID'),
     },
     async ({ project_id }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       const res = await apiRequest<any>('GET', `/projects/${project_id}/resources`);
       if (!res.ok) return textResult(formatError(res));
 

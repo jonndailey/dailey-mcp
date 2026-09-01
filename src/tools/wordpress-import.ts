@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, basename } from 'node:path';
 import { analyze, stage, type BundleReport } from '@daileyos/wp-bundle';
-import { apiRequest, formatError, textResult } from '../api.js';
+import { apiRequest, formatError, textResult, isValidProjectId, invalidProjectIdResult } from '../api.js';
 import { putFileToPresignedUrl } from '../upload.js';
 
 // Client-side preflight cap for `analyze`, before any project/plan is known.
@@ -60,6 +60,7 @@ export function registerWordPressImportTools(server: McpServer) {
       migration_id: z.string().optional().describe('Migration ID — required for action=status'),
     },
     async ({ action, bundle_file, project_id, confirm, allow_unsafe, migration_id }) => {
+      if (project_id !== undefined && !isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       if (action === 'status') {
         if (!project_id || !migration_id) return textResult('project_id and migration_id are required for action=status');
         const res = await apiRequest<StatusResponse>('GET', `/projects/${project_id}/migrate/wordpress/${migration_id}`);
