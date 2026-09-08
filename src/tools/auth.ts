@@ -13,6 +13,7 @@ interface AuthEnableResponse {
   project_id: string;
   auth_enabled: boolean;
   created: boolean;
+  app_id: string;
   app_slug: string;
   client_id: string;
   client_secret?: string;
@@ -37,7 +38,7 @@ const AUTH_REQUIRED_ERROR = {
   error_code: 'DAILEY_AUTH_REQUIRED',
   message: 'Not authenticated',
   remediation: 'Run `dailey auth setup` in your terminal',
-  help_url: 'https://docs.dailey.cloud/auth',
+  help_url: 'https://docs.dailey.cloud/docs/mcp/',
 };
 
 export function registerAuthTools(server: McpServer) {
@@ -70,9 +71,14 @@ export function registerAuthTools(server: McpServer) {
 
   server.tool(
     'dailey_auth_status',
-    'Check authentication status — returns whether the MCP server is authenticated and the account details if so',
-    {},
-    async () => {
+    'Check MCP SESSION authentication — whether this CLI session is signed in, and as whom. This is about the session, NOT about a project: it does not report whether a project has Dailey Core auth configured. For that, use dailey_platform_info(project_id) and read the `auth` capability (auth_state / login_possible), or dailey_auth_enable to set it up. If this user manages other accounts, this returns only a COUNT; use dailey_accounts to list them.',
+    {
+      include_managed_accounts: z
+        .boolean()
+        .optional()
+        .describe('Include the full list of managed accounts (names and slugs) rather than just a count. Defaults to false — dailey_accounts is the tool for listing the fleet.'),
+    },
+    async ({ include_managed_accounts }: { include_managed_accounts?: boolean }) => {
       const res = await apiRequest<UserInfo>('GET', '/customers/me');
 
       if (!res.ok) {
@@ -126,11 +132,22 @@ export function registerAuthTools(server: McpServer) {
         account: u.name,
         email: u.email,
         recommended_action: null,
+        // Summarise the fleet by default. This used to return every managed
+        // account in full — names, slugs and ids for third-party customers —
+        // from a call that reads like "is my session authenticated?". That put
+        // other people's customer names into transcripts nobody asked to see
+        // them in. The count is what a status check actually needs; listing the
+        // fleet is dailey_accounts' job, and is available here on request.
         manager: {
           is_manager: fleet.length > 0,
-          managed_accounts: fleet,
+          managed_account_count: fleet.length,
           active_account: active,
           operating_as: active ? 'managed_account' : 'self',
+          ...(include_managed_accounts
+            ? { managed_accounts: fleet }
+            : fleet.length > 0
+              ? { managed_accounts_note: 'Not listed here. Use dailey_accounts, or pass include_managed_accounts: true.' }
+              : {}),
         },
       });
     },
@@ -138,7 +155,7 @@ export function registerAuthTools(server: McpServer) {
 
   server.tool(
     'dailey_auth_enable',
-    'Enable Dailey Core authentication for a project in one call. Registers the app in Core, installs it in your Core tenant, and enrolls you — wrapping Core self-serve provisioning. The origin is derived from the project (https://<slug>.dailey.cloud, plus any *.dailey.cloud custom domains). After enabling, the app calls Core /auth/* with header X-Client-Id: <app_slug>; the JWT tenant claim is `tenant`. client_secret is returned ONLY the first time. enforce_enrolled_factors defaults to false so password login still works alongside passkeys.',
+    'Enable Dailey Core authentication for a project in one call. Registers the app in Core, installs it in your Core tenant, and enrolls you — wrapping Core self-serve provisioning. The origin is derived from the project (https://<slug>.dailey.cloud, plus any *.dailey.cloud custom domains). Your app hosts its OWN login UI and calls Core directly with header X-Client-Id: <app_slug> — the app-scoped, embedded endpoints are POST /auth/app-signup (create an end user + get tokens), POST /auth/login (returns tokens in JSON), and POST /auth/refresh. Do NOT use /oauth/authorize for this — that is the platform SSO redirect flow, a different integration. In the returned JWT, identify the end user by the `sub` claim (their Core user id); the `tenant` claim is the app\'s shared Core tenant (account-level, the same for every user) — use it to scope to your app, not to tell users apart. The app\'s Core UUID is returned as app_id (and injected into the app runtime as DAILEY_APP_ID). client_secret is returned ONLY the first time. enforce_enrolled_factors defaults to false so password login still works alongside passkeys.',
     {
       project_id: z.string().describe('The project ID'),
       enforce_enrolled_factors: z
@@ -157,6 +174,7 @@ export function registerAuthTools(server: McpServer) {
         `Dailey Core authentication enabled for project ${d.project_id}.`,
         '',
         `App / X-Client-Id: ${d.app_slug}`,
+        `App Core UUID:     ${d.app_id}   (also injected as DAILEY_APP_ID)`,
         `Origin:            ${d.origin}`,
         ...(d.extra_origins && d.extra_origins.length ? [`Also allowed:      ${d.extra_origins.join(', ')}`] : []),
         `Core base URL:     ${d.core_base_url}`,
@@ -169,7 +187,9 @@ export function registerAuthTools(server: McpServer) {
       }
       lines.push(
         '',
-        `Call Core /auth/* with header X-Client-Id: ${d.x_client_id}. The token tenant claim is \`tenant\`.`,
+        `Your app hosts its own login and calls Core directly with header X-Client-Id: ${d.x_client_id}.`,
+        `Endpoints: POST /auth/app-signup, POST /auth/login, POST /auth/refresh (embedded/API-first — not /oauth/authorize).`,
+        `In the JWT: \`sub\` is the end-user id; \`tenant\` is your app's shared Core tenant (same for every user).`,
         `Docs: ${d.docs_url}`,
       );
       return textResult(lines.join('\n'));

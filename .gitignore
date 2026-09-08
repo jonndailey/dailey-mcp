@@ -24,3 +24,6 @@ Thumbs.db
 # Local test artifacts
 claude-config.local.json
 *.tgz
+
+# Moved-aside credential files (never commit, never publish)
+.npmrc.*

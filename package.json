@@ -1,12 +1,15 @@
 {
   "name": "@daileyos/mcp-server",
-  "version": "1.21.2",
+  "version": "1.21.3",
   "description": "Dailey OS MCP server for Claude Code and AI assistants",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
     "dailey-mcp": "./dist/index.js"
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc && chmod +x dist/index.js",
     "start": "node dist/index.js",
