@@ -71,9 +71,14 @@ export function registerAuthTools(server: McpServer) {
 
   server.tool(
     'dailey_auth_status',
-    'Check authentication status — returns whether the MCP server is authenticated and the account details if so',
-    {},
-    async () => {
+    'Check MCP SESSION authentication — whether this CLI session is signed in, and as whom. This is about the session, NOT about a project: it does not report whether a project has Dailey Core auth configured. For that, use dailey_platform_info(project_id) and read the `auth` capability (auth_state / login_possible), or dailey_auth_enable to set it up. If this user manages other accounts, this returns only a COUNT; use dailey_accounts to list them.',
+    {
+      include_managed_accounts: z
+        .boolean()
+        .optional()
+        .describe('Include the full list of managed accounts (names and slugs) rather than just a count. Defaults to false — dailey_accounts is the tool for listing the fleet.'),
+    },
+    async ({ include_managed_accounts }: { include_managed_accounts?: boolean }) => {
       const res = await apiRequest<UserInfo>('GET', '/customers/me');
 
       if (!res.ok) {
@@ -127,11 +132,22 @@ export function registerAuthTools(server: McpServer) {
         account: u.name,
         email: u.email,
         recommended_action: null,
+        // Summarise the fleet by default. This used to return every managed
+        // account in full — names, slugs and ids for third-party customers —
+        // from a call that reads like "is my session authenticated?". That put
+        // other people's customer names into transcripts nobody asked to see
+        // them in. The count is what a status check actually needs; listing the
+        // fleet is dailey_accounts' job, and is available here on request.
         manager: {
           is_manager: fleet.length > 0,
-          managed_accounts: fleet,
+          managed_account_count: fleet.length,
           active_account: active,
           operating_as: active ? 'managed_account' : 'self',
+          ...(include_managed_accounts
+            ? { managed_accounts: fleet }
+            : fleet.length > 0
+              ? { managed_accounts_note: 'Not listed here. Use dailey_accounts, or pass include_managed_accounts: true.' }
+              : {}),
         },
       });
     },
