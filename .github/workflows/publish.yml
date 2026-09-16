@@ -67,7 +67,11 @@ jobs:
   publish:
     needs: build
     if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: dailey-mcp-runners
+    # GitHub-HOSTED runner: OIDC trusted publishing needs the id-token endpoint
+    # (ACTIONS_ID_TOKEN_REQUEST_URL/TOKEN) which the self-hosted dailey-mcp-runners
+    # did not provide — npm then fell through to no-auth (ENEEDAUTH) / placeholder
+    # token (E404). Build/smoke-test stays on the self-hosted runner above.
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
@@ -76,15 +80,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          # Deliberately NO registry-url: with it, setup-node writes a placeholder
-          # `//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}` into .npmrc, and
-          # (with no token supplied) NODE_AUTH_TOKEN defaults to XXXXX-XXXXX-...,
-          # so npm sends that bogus token and gets 404 instead of falling through
-          # to OIDC. The default registry is registry.npmjs.org, which is what
-          # trusted-publishing OIDC targets anyway.
+          registry-url: 'https://registry.npmjs.org'
       # Trusted Publishing (OIDC) needs npm >= 11.5.1; node 20 ships npm 10.x.
       - run: npm install -g npm@^11.5.1
-      - run: node -v && npm -v   # diagnostic: confirm npm >= 11.5.1 is the one publishing
+      - name: Diagnostics (versions + OIDC availability)
+        run: |
+          echo "node $(node -v)  npm $(npm -v)"
+          echo "OIDC id-token endpoint: ${ACTIONS_ID_TOKEN_REQUEST_URL:+PRESENT}${ACTIONS_ID_TOKEN_REQUEST_URL:-MISSING}"
       - run: npm ci
       - run: npm run build
       - name: Verify tag matches package.json version
