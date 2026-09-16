@@ -77,6 +77,8 @@ jobs:
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
+      # Trusted Publishing (OIDC) needs npm >= 11.5.1; node 20 ships npm 10.x.
+      - run: npm install -g npm@^11.5.1
       - run: npm ci
       - run: npm run build
       - name: Verify tag matches package.json version
@@ -88,9 +90,12 @@ jobs:
             exit 1
           fi
           echo "Publishing v$PKG_VERSION"
+      # Trusted Publishing: no NODE_AUTH_TOKEN. npm exchanges the GitHub OIDC
+      # id-token (permissions: id-token: write) with the registry's configured
+      # trusted publisher for @daileyos/mcp-server, and attaches build provenance
+      # automatically. Configure the trusted publisher in the package's npm
+      # settings (repo jonndailey/dailey-mcp, workflow publish.yml) or this 403s.
       - run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Notify Slack
         if: always()
