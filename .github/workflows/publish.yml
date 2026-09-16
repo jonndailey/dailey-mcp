@@ -76,9 +76,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          registry-url: 'https://registry.npmjs.org'
+          # Deliberately NO registry-url: with it, setup-node writes a placeholder
+          # `//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}` into .npmrc, and
+          # (with no token supplied) NODE_AUTH_TOKEN defaults to XXXXX-XXXXX-...,
+          # so npm sends that bogus token and gets 404 instead of falling through
+          # to OIDC. The default registry is registry.npmjs.org, which is what
+          # trusted-publishing OIDC targets anyway.
       # Trusted Publishing (OIDC) needs npm >= 11.5.1; node 20 ships npm 10.x.
       - run: npm install -g npm@^11.5.1
+      - run: node -v && npm -v   # diagnostic: confirm npm >= 11.5.1 is the one publishing
       - run: npm ci
       - run: npm run build
       - name: Verify tag matches package.json version
