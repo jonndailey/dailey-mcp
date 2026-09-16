@@ -216,29 +216,49 @@ export function registerProjectTools(server: McpServer) {
 
   server.tool(
     'dailey_deploy',
-    'Trigger a build + deploy for an existing single-container project. Use this to redeploy a project that already exists (e.g., after pushing new commits to the repo). For multi-service projects use dailey_deploy_multi. To create AND deploy a new project, use dailey_deploy_bundle.',
+    'Trigger a build + deploy for an existing single-container project. Use this to redeploy a project that already exists (e.g., after pushing new commits to the repo). Pass repo_url to change the build source for this deploy (and persist it) — omit it to rebuild the project\'s currently stored source. For multi-service projects use dailey_deploy_multi. To create AND deploy a new project, use dailey_deploy_bundle.',
     {
       project_id: z.string().describe('The project ID to deploy'),
       commit_sha: z.string().optional().describe('Specific commit SHA to deploy (default: HEAD of the configured branch)'),
+      repo_url: z.string().optional().describe('Override the build source for this deploy and persist it as the project\'s repo_url: an https/ssh git remote, or this project\'s OWN prebuilt bundle key `zip://deploy-bundles/<project_id>/latest.zip` to redeploy an uploaded bundle. A zip:// value must match this project\'s own bundle key exactly (a cross-tenant key is refused). Omit to rebuild the stored source.'),
     },
-    async ({ project_id, commit_sha }) => {
-      const res = await apiRequest<any>('POST', '/deploys', {
-        project_id,
-        commit_sha: commit_sha || 'HEAD',
-      });
+    async ({ project_id, commit_sha, repo_url }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
+      // Forward repo_url when supplied. The platform (capi POST /api/deploys)
+      // PERSISTS it before dispatch — deploy-service builds from the stored
+      // repo_url, never the request body, so omitting this field is exactly the
+      // gap that made zip-bundle redeploys silently rebuild the old git source.
+      const body: Record<string, unknown> = { project_id, commit_sha: commit_sha || 'HEAD' };
+      if (repo_url) body.repo_url = repo_url;
+      const res = await apiRequest<any>('POST', '/deploys', body);
       if (!res.ok) return textResult(formatError(res));
 
       const d = res.data || {};
-      return textResult([
+      const lines = [
         `Deploy triggered!`,
         ``,
         `Project:   ${project_id}`,
         `Build ID:  ${d.build_id || '(unknown)'}`,
         `Commit:    ${commit_sha || 'HEAD'}`,
+      ];
+      // Surface the source deploy-service actually chose (git | zip-redeploy |
+      // zip-upload*) so a green tick over the wrong source is visible, not silent.
+      if (d.mode) lines.push(`Source:    ${d.mode}`);
+      // The exact silent failure this parameter exists to prevent: caller asked
+      // for a zip bundle but the platform built from git anyway (unchanged value,
+      // or a rejected key). Do not trust the green tick — flag the mismatch.
+      if (repo_url?.startsWith('zip://') && d.mode && d.mode !== 'zip-redeploy') {
+        lines.push(
+          ``,
+          `⚠ Requested a zip:// bundle source but the deploy came back mode="${d.mode}", not "zip-redeploy" — the bundle was NOT used. Confirm repo_url is exactly zip://deploy-bundles/${project_id}/latest.zip, then re-check the project's stored repo_url.`,
+        );
+      }
+      lines.push(
         ``,
         `Next: dailey_deploy_status with project_id=${project_id} to watch progress.`,
         `      dailey_build_logs with project_id=${project_id} if it fails.`,
-      ].join('\n'));
+      );
+      return textResult(lines.join('\n'));
     },
   );
 
