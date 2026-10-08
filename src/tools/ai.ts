@@ -74,7 +74,7 @@ export function registerAiTools(server: McpServer) {
 
   server.tool(
     'dailey_compute_enable',
-    'Enable Dailey Compute (GPU) for a project. Mints a capability-scoped key and injects DAILEY_COMPUTE_URL/KEY into the project env (applies on next deploy). The account-level Compute feature must be on first; check dailey_ai_info.',
+    'Enable Dailey Compute (GPU) for a project. Mints a capability-scoped key and injects DAILEY_COMPUTE_URL/KEY into the project env (applies on next deploy). The account-level Compute feature must be on first; check dailey_ai_info. Compute workloads: transcribe (audio/video to text) and image-edit (background removal, upscaling). Compute does NOT do image generation or text-to-speech: for images use Dailey Images (dailey_images_enable / dailey_images_generate); for text-to-speech use Dailey Voice (POST /api/projects/:id/ai/audio/speech).',
     { project_id: z.string().describe('The project ID') },
     async ({ project_id }) => {
       if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
