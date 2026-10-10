@@ -9,6 +9,8 @@ COPY src ./src
 RUN npm run build && npm prune --omit=dev
 
 FROM node:22-alpine
+# CVE-2026-59873: npm < 10.9.9 bundles tar 6.x; upgrade global npm so the shipped tar is >= 7.5.19
+RUN npm install -g npm@10.9.9 && npm cache clean --force
 ENV NODE_ENV=production PORT=8080
 WORKDIR /app
 COPY --from=build /app/node_modules ./node_modules
