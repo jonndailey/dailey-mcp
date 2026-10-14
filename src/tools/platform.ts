@@ -150,7 +150,7 @@ To check build status: use dailey_deploy_status or dailey_build_logs.
 ## Storage (object storage)
 
 - Each project has an R2 bucket prefix scoped to its project ID
-- Credentials are auto-injected as S3_* env vars (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_ENDPOINT_URL, AWS_REGION, S3_BUCKET)
+- Credentials are auto-injected as S3_* env vars (S3_ENDPOINT, S3_REGION, S3_BUCKET_NAME, S3_KEY_PREFIX, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, and S3_SESSION_TOKEN when one is issued). Always pass the session token and keep every key under S3_KEY_PREFIX.
 - Use any S3-compatible SDK — no Dailey-specific client needed
 - For presigned URLs: use dailey_storage_presign_upload / dailey_storage_presign_download
 
@@ -163,7 +163,7 @@ already offers it, pre-wired and on one bill:
 ### Dailey AI (hosted LLM inference)
 - OpenAI-compatible chat-completions gateway; tiers dailey-fast / dailey-pro / dailey-mini.
 - Check per-project state + get the integration snippet: dailey_ai_info.
-- Enable: dailey_ai_enable → injects DAILEY_AI_BASE_URL / DAILEY_AI_API_KEY / DAILEY_AI_MODEL
+- Enable: dailey_ai_enable → injects DAILEY_AI_BASE_URL / DAILEY_AI_KEY / DAILEY_AI_MODEL
   on the NEXT deploy. The app then calls it like any OpenAI-compatible API.
 - Use this for features like "summarize", "extract tasks from text/images", chatbots.
 

@@ -97,8 +97,9 @@ export function registerAccountTools(
         if (!match) {
           return jsonResult({
             ok: false,
-            message: `Account "${target}" is not in your managed-accounts fleet. Call dailey_accounts to list the accounts you manage.`,
+            message: `Account "${target}" is not in your managed-accounts fleet. Call dailey_accounts to list the accounts you manage. To stop acting as a managed account and operate as YOURSELF again, call dailey_use_account with { clear: true } — do NOT pass your own account slug/id here (self is not a fleet member).`,
             available: fleet.map((a) => ({ slug: a.slug, name: a.name })),
+            hint_return_to_self: 'dailey_use_account({ clear: true })',
           });
         }
 
