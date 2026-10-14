@@ -87,6 +87,7 @@ export function nextRunsText(nextRuns: string[], timezone?: string): string {
 }
 
 export function signingSecretBlock(host: string, secret: string, where: 'mcp' | 'cli'): string {
+  if (!secret) throw new Error('signingSecretBlock needs a secret (confirm returns null when the address was already confirmed)');
   const lines = [
     `Signing secret for ${host} (shown once):`,
     '',
@@ -105,7 +106,7 @@ export function isSafeId(id: string): boolean {
 }
 
 const DEDUPE_HELP = 'The dedupe key can use letters, numbers and . _ : - (up to 120), and cannot look like an id.';
-const NAME_HELP = 'Use a name with letters, numbers, dots, dashes and underscores.';
+const NAME_HELP = 'Use a name with lowercase letters, numbers and dashes.';
 
 // Item key sent in a URL path: same rule as the server; dot-only keys would be dot-segments.
 export function checkDedupeKey(key: string): string | null {
@@ -114,13 +115,14 @@ export function checkDedupeKey(key: string): string | null {
   return null;
 }
 
-// Credential name (or any single path segment): refuse dot-segments and path characters.
+// Credential name: same rule as the server (NAME_RE), so it is also a safe path segment.
 export function checkName(name: string): string | null {
   const n = String(name ?? '');
-  if (!/^[A-Za-z0-9._-]{1,64}$/.test(n) || /^\.+$/.test(n)) return NAME_HELP;
+  if (!/^[a-z0-9][a-z0-9-]{0,79}$/.test(n)) return NAME_HELP;
   return null;
 }
 
+// Callers must encodeURIComponent the host before putting it in a path.
 // Lenient for confirm and rotate (server normalises case, port and trailing dot); strict for credentials add (server refuses ':').
 export function checkHostInput(host: string, strict = false): string | null {
   const h = String(host || '').trim();

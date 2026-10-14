@@ -102,9 +102,6 @@ test('ids and hosts are checked before any request', () => {
   assert.equal(checkHostInput('.'), 'Give just the host name, like api.example.com.');
   assert.equal(checkHostInput('..'), 'Give just the host name, like api.example.com.');
   assert.equal(isSafeId('..'), false);
-  assert.equal(checkName('..') !== null, true);
-  assert.equal(checkName('.') !== null, true);
-  assert.equal(checkName('partner-api'), null);
   assert.equal(checkDedupeKey('appt-42-remind'), null);
   assert.equal(checkDedupeKey('..') !== null, true);
   assert.equal(checkDedupeKey('appt 42/remind'), 'The dedupe key can use letters, numbers and . _ : - (up to 120), and cannot look like an id.');
@@ -114,4 +111,48 @@ test('ids and hosts are checked before any request', () => {
 
 test('constants carry no em dash', () => {
   for (const s of [NOT_AVAILABLE, TURN_ON_FIRST]) assert.doesNotMatch(s, EM);
+});
+
+test('checkName matches the server name rule', () => {
+  const help = 'Use a name with lowercase letters, numbers and dashes.';
+  assert.equal(checkName('partner-api'), null);
+  assert.equal(checkName('a'.repeat(80)), null);
+  assert.equal(checkName('a'.repeat(65)), null);
+  assert.equal(checkName('a'.repeat(81)), help);
+  assert.equal(checkName('Partner'), help);
+  for (const bad of ['.', '..', '_x', 'a_b', 'a/b', '', '-a']) assert.equal(checkName(bad), help);
+});
+
+test('dedupe key edges', () => {
+  assert.equal(checkDedupeKey('a'.repeat(120)), null);
+  assert.notEqual(checkDedupeKey('a'.repeat(121)), null);
+  assert.notEqual(checkDedupeKey(''), null);
+  assert.notEqual(checkDedupeKey('3F2B8C1E-5A4D-4E6F-9A1B-0C2D3E4F5A6B'), null);
+});
+
+test('strict host refuses ? and #', () => {
+  assert.notEqual(checkHostInput('a.com?x', true), null);
+  assert.notEqual(checkHostInput('a.com#x', true), null);
+});
+
+test('more schedule flags and run triggers', () => {
+  const base = { id: 's1', name: 'n', source: 'platform', kind: 'visit', cron: '0 18 * * *', every_text: 'day', timezone: null, enabled: 1, paused_reason: null, pending_confirmation: 0, next_run_at: '2026-10-15T22:00:00.000Z', last_run_at: null, last_status: null, consecutive_failures: 0, method: 'GET', query_keys: [], body_bytes: 0, path: '/x' };
+  assert.match(describeSchedule({ ...base, source: 'app' } as any), /Created by your app/);
+  const pu = describeSchedule({ ...base, enabled: 0, paused_reason: 'paused_by_user' } as any);
+  assert.match(pu, /Paused/);
+  assert.doesNotMatch(pu, /next 2026/);
+  assert.match(describeSchedule({ ...base, enabled: 0, paused_reason: 'disabled' } as any), /turned off for this project/);
+  assert.match(describeRun({ id: 'r', run_trigger: 'item', scheduled_for: 'x', status: 'succeeded', attempt: 1 } as any), /one-time/);
+});
+
+test('more error statuses', () => {
+  assert.match(schedulesErrorText({ ok: false, status: 504, data: null }), /try again in a minute/i);
+  assert.match(schedulesErrorText({ ok: false, status: 403, data: {} }), /could not do that/);
+  assert.match(schedulesErrorText({ ok: false, status: 500, data: null }), /HTTP 500/);
+  assert.match(schedulesErrorText({ ok: false, status: 501, data: null }), /HTTP 501/);
+});
+
+test('signing secret block refuses an empty secret', () => {
+  assert.throws(() => signingSecretBlock('a.com', '', 'mcp'));
+  assert.throws(() => signingSecretBlock('a.com', null as any, 'cli'));
 });
