@@ -234,13 +234,21 @@ test('item add and cancel (by id or dedupe key, encoded)', async () => {
   assert.match(await fake.run('dailey_schedules_item_add', { project_id: PID, at: 'x', visit: {} }), /path in your app or a url/);
   assert.equal(calls.length, n);
   reply = () => ({ ok: true, status: 200, data: { cancelled: true } });
-  await fake.run('dailey_schedules_item_cancel', { project_id: PID, item: 'appt-42-remind' });
+  const dc = fake.descriptions.get('dailey_schedules_item_cancel')!;
+  assert.match(dc, /cannot be undone/); assert.match(dc, /dedupe_key.*cannot be (used|reused)|cannot be reused/s); assert.match(dc, /confirm: true/);
+  const k = calls.length;
+  assert.match(await fake.run('dailey_schedules_item_cancel', { project_id: PID, item: 'appt-42-remind' }), /confirm: true/);
+  assert.equal(calls.length, k);
+  reply = () => ({ ok: false, status: 404, data: { error: 'Not found.' } });
+  assert.equal(await fake.run('dailey_schedules_item_cancel', { project_id: PID, item: 'appt-42-remind', confirm: true }), 'We could not find that one-time visit.');
+  reply = () => ({ ok: true, status: 200, data: { cancelled: true } });
+  await fake.run('dailey_schedules_item_cancel', { project_id: PID, item: 'appt-42-remind', confirm: true });
   assert.equal(calls.at(-1)!.path, `/projects/${PID}/schedules/items/appt-42-remind`);
   assert.equal(calls.at(-1)!.method, 'DELETE');
-  await fake.run('dailey_schedules_item_cancel', { project_id: PID, item: 'appt:42' });
+  await fake.run('dailey_schedules_item_cancel', { project_id: PID, item: 'appt:42', confirm: true });
   assert.equal(calls.at(-1)!.path, `/projects/${PID}/schedules/items/appt%3A42`);
   const m = calls.length;
-  for (const bad of ['..', 'a b/c', '']) await fake.run('dailey_schedules_item_cancel', { project_id: PID, item: bad });
+  for (const bad of ['..', 'a b/c', '']) await fake.run('dailey_schedules_item_cancel', { project_id: PID, item: bad, confirm: true });
   assert.equal(calls.length, m);
 });
 
@@ -349,7 +357,14 @@ test('test endpoint: needs confirm, warns, reports protected or open, 429 senten
   assert.match(await fake.run('dailey_schedules_test_endpoint', { project_id: PID, schedule_id: SID, confirm: true }), /refused the test request \(401\)/);
   assert.equal(calls.at(-1)!.path, `/projects/${PID}/schedules/${SID}/test-endpoint`);
   reply = () => ({ ok: true, status: 200, data: { protected: false, status: 200 } });
-  assert.match(await fake.run('dailey_schedules_test_endpoint', { project_id: PID, schedule_id: SID, confirm: true }), /accepted a request with a wrong signature/);
+  const te = () => fake.run('dailey_schedules_test_endpoint', { project_id: PID, schedule_id: SID, confirm: true });
+  assert.match(await te(), /accepted a request with a wrong signature; anyone who finds this path can trigger it/);
+  reply = () => ({ ok: true, status: 200, data: { protected: false, status: 302 } });
+  assert.match(await te(), /accepted a request with a wrong signature/);
+  reply = () => ({ ok: true, status: 200, data: { protected: true, status: 403 } });
+  assert.match(await te(), /refused the test request \(403\)/);
+  reply = () => ({ ok: true, status: 200, data: { protected: false, status: 500 } });
+  assert.match(await te(), /did not refuse it with 401 \(answered 500\); it may not check signatures/);
   reply = () => ({ ok: false, status: 429, data: { error: 'You have used all the endpoint tests for today. Try again tomorrow.' } });
   assert.equal(await fake.run('dailey_schedules_test_endpoint', { project_id: PID, schedule_id: SID, confirm: true }), 'You have used all the endpoint tests for today. Try again tomorrow.');
 });
@@ -362,4 +377,29 @@ test('no new tool leaks the app key, credential value or signing secret outside 
     await fake.run('dailey_schedules_credential_add', { project_id: PID, name: 'n', host: 'h.example.com', kind: 'header', param_name: 'X', value: SECRETS[1] }),
   ];
   for (const o of outs) for (const s of SECRETS) assert.ok(!o.includes(s));
+});
+
+test('dailey_os_guide includes the Dailey Schedules section only with the flag', async () => {
+  const { registerPlatformTools } = await import('../src/tools/platform.js');
+  const prev = process.env.DAILEY_SCHEDULES_TOOLS;
+  try {
+    for (const [flag, expect] of [[undefined, false], ['1', true]] as const) {
+      if (flag === undefined) delete process.env.DAILEY_SCHEDULES_TOOLS; else process.env.DAILEY_SCHEDULES_TOOLS = flag;
+      const f = makeFakeServer();
+      registerPlatformTools(f.server as any);
+      const text = await f.run('dailey_os_guide', {});
+      assert.equal(/### Dailey Schedules/.test(text), expect);
+      if (expect) {
+        assert.match(text, /Dailey-Schedules-Signature/);
+        assert.match(text, /Dailey-Schedules-Verified: v1/);
+        assert.match(text, /<slug>\.internal/);
+        assert.match(text, /answer 401/);
+        assert.match(text, /dailey_schedules_enable/);
+        assert.match(text, /dailey_schedules_disable/);
+        assert.doesNotMatch(text.slice(text.indexOf('### Dailey Schedules'), text.indexOf('### Usage')), /\u2014/);
+      }
+    }
+  } finally {
+    if (prev === undefined) delete process.env.DAILEY_SCHEDULES_TOOLS; else process.env.DAILEY_SCHEDULES_TOOLS = prev;
+  }
 });

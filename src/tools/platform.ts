@@ -1,5 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+import { schedulesToolsEnabled, SCHEDULES_GUIDE } from './schedules-format.js';
 import { apiRequest, formatError, textResult, isValidProjectId, invalidProjectIdResult } from '../api.js';
 
 interface PlatformCapability {
@@ -182,6 +183,7 @@ already offers it, pre-wired and on one bill:
 - Sends from <slug>@send.dailey.cloud, zero DNS setup, $10/mo incl. 10k emails.
   Tools: dailey_email_status / dailey_email_enable. App POSTs to the injected
   DAILEY_EMAIL_API_URL with DAILEY_EMAIL_API_KEY.
+${schedulesToolsEnabled() ? SCHEDULES_GUIDE : ''}
 
 ### Usage + billing for all of the above
 - dailey_usage_summary — month-to-date usage, allowance remaining, estimated overage,

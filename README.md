@@ -81,6 +81,14 @@ Highlights:
 - `dailey_deploy_multi` — trigger a multi-process deploy
 - `dailey_run_image` — deploy any Docker Hub image as a new project
 
+## Dailey Schedules (preview)
+
+Dailey Schedules runs work for your app on a timer, or once at a set time, by visiting a path in your app or an outside address. These tools turn it on per project, manage schedules and run history, and help you check that your app verifies the signed calls.
+
+Set `DAILEY_SCHEDULES_TOOLS=1` in the MCP server env to show the tools. They work where your Dailey Cloud account has Dailey Schedules; elsewhere they say it is not available yet.
+
+Tools: `dailey_schedules_enable`, `dailey_schedules_disable`, `dailey_schedules_list`, `dailey_schedules_preview`, `dailey_schedules_create`, `dailey_schedules_update`, `dailey_schedules_delete`, `dailey_schedules_pause`, `dailey_schedules_resume`, `dailey_schedules_run_now`, `dailey_schedules_history`, `dailey_schedules_item_add`, `dailey_schedules_item_cancel`, `dailey_schedules_credential_add`, `dailey_schedules_credential_remove`, `dailey_schedules_host_confirm`, `dailey_schedules_host_rotate_secret`, `dailey_schedules_rotate_secret`, `dailey_schedules_rotate_key`, `dailey_schedules_test_endpoint`.
+
 ## Development
 
 ```bash

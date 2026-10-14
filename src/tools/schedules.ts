@@ -275,14 +275,15 @@ export function registerSchedulesTools(server: McpServer) {
     });
 
   server.tool('dailey_schedules_item_cancel',
-    'Cancel a pending one-time Dailey Schedules visit by its id or its dedupe_key. Ask the user first if it is not obvious which one they mean.',
-    { ...projectArg, item: z.string().describe('The item id or the dedupe_key you gave it.') },
-    async ({ project_id, item }) => {
+    'Cancel a pending one-time Dailey Schedules visit by its id or its dedupe_key. This cannot be undone, and the dedupe_key cannot be reused afterwards. Ask the user first and pass confirm: true.',
+    { ...projectArg, item: z.string().describe('The item id or the dedupe_key you gave it.'), ...confirmArg },
+    async ({ project_id, item, confirm }) => {
       if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       if (!item) return textResult('Give the item id or dedupe key.');
       if (!isSafeId(item)) { const k = checkDedupeKey(item); if (k) return textResult(k); }
+      if (confirm !== true) return textResult('This cancels the one-time visit and cannot be undone; its dedupe key cannot be reused. Ask the user, then call again with confirm: true.');
       const res = await apiRequest('DELETE', `${base(project_id)}/items/${enc(item)}`);
-      if (!res.ok) return textResult(schedulesErrorText(res));
+      if (!res.ok) return textResult(schedulesErrorText(res, 'item'));
       return textResult('Cancelled.');
     });
 
@@ -381,8 +382,9 @@ export function registerSchedulesTools(server: McpServer) {
       if (confirm !== true) return textResult(`${TEST_WARNING}\nAsk the user, then call again with confirm: true.`);
       const res = await apiRequest<{ protected: boolean; status: number }>('POST', `${base(project_id)}/${enc(schedule_id)}/test-endpoint`, {});
       if (!res.ok) return textResult(schedulesErrorText(res));
-      return textResult(res.data.protected
-        ? `Good: your app refused the test request (${res.data.status}). It checks Dailey Schedules signatures.`
-        : `Warning: your app accepted a request with a wrong signature (answered ${res.data.status}). Anyone who finds this path can trigger it. Add signature checking (dailey_os_guide has the steps) and test again.`);
+      const st = res.data.status;
+      if (res.data.protected) return textResult(`Good: your app refused the test request (${st}). It checks Dailey Schedules signatures.`);
+      if (st >= 200 && st < 400) return textResult(`Warning: your app accepted a request with a wrong signature; anyone who finds this path can trigger it (answered ${st}). Add signature checking (dailey_os_guide has the steps) and test again.`);
+      return textResult(`Your app did not refuse it with 401 (answered ${st}); it may not check signatures. Add signature checking (dailey_os_guide has the steps) and test again.`);
     });
 }
