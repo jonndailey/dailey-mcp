@@ -31,7 +31,7 @@ interface EmailStatusResponse {
 export function registerEmailTools(server: McpServer) {
   server.tool(
     'dailey_email_enable',
-    'Enable Dailey Email ($10/mo, per project) so the app can send from <slug>@send.dailey.cloud. This is PAY-AT-PURCHASE and billing-owner-only: the normal response is a Stripe Checkout URL the user MUST open to pay $10/mo before email turns on — do NOT treat email as enabled until payment completes. The operator/internal path enables immediately (email_enabled:true). After it turns on, redeploy so DAILEY_EMAIL_* env is injected.',
+    'Enable Dailey Email for a project so the app can send from <slug>@send.dailey.cloud. On current plans (Free, Studio, Managed) it turns on immediately and sends come from the account-wide allowance: Studio includes 5,000 a month, Managed 20,000, Free none, and email packs from Billing add more. If the allowance is used up, sends return 402 until the owner adds a pack in Billing; there is no automatic overage. On older plans the response may instead be a Stripe Checkout URL ($10/mo, billing owner only): then email is NOT on until that payment completes. After it turns on, redeploy so DAILEY_EMAIL_* env is injected.',
     { project_id: z.string().describe('The project ID') },
     async ({ project_id }) => {
       if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
