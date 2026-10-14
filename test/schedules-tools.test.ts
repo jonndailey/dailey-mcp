@@ -1,0 +1,123 @@
+import { test, mock, beforeEach } from 'node:test';
+import assert from 'node:assert/strict';
+
+type Call = { method: string; path: string; body?: any };
+const calls: Call[] = [];
+let reply: (c: Call) => { ok: boolean; status: number; data: any } = () => ({ ok: true, status: 200, data: {} });
+const textResult = (text: string) => ({ content: [{ type: 'text' as const, text }] });
+
+mock.module('../src/api.js', { namedExports: {
+  apiRequest: async (method: string, path: string, body?: any) => { const c = { method, path, body }; calls.push(c); return reply(c); },
+  textResult,
+  jsonResult: (d: unknown) => textResult(JSON.stringify(d, null, 2)),
+  formatError: (res: any) => `Error (${res.status})`,
+  isValidProjectId: (id: string) => /^[0-9a-f-]{8,}$/i.test(id),
+  invalidProjectIdResult: (id: string) => textResult(`invalid project id: ${id}`),
+} });
+const { registerSchedulesTools } = await import('../src/tools/schedules.js');
+
+function makeFakeServer() {
+  const handlers = new Map<string, (args: any) => Promise<{ content: Array<{ type: 'text'; text: string }> }>>();
+  const descriptions = new Map<string, string>();
+  const server = { tool: (name: string, desc: string, _schema: unknown, h: any) => { handlers.set(name, h); descriptions.set(name, desc); } };
+  return { server, handlers, descriptions, run: async (name: string, args: any) => (await handlers.get(name)!(args)).content[0].text };
+}
+
+const PID = 'c0c0eaaf-25a4-11f1-9bf3-fa163e580ccd';
+const SID = '3f2b8c1e-5a4d-4e6f-9a1b-0c2d3e4f5a6b';
+let fake: ReturnType<typeof makeFakeServer>;
+
+beforeEach(() => {
+  calls.length = 0;
+  reply = () => ({ ok: true, status: 200, data: {} });
+  fake = makeFakeServer();
+  registerSchedulesTools(fake.server as any);
+});
+
+test('list: off project explains how to turn on', async () => {
+  reply = () => ({ ok: true, status: 200, data: { enabled: false, schedules: [], hosts: [], credentials: [], signature_seen: false } });
+  const text = await fake.run('dailey_schedules_list', { project_id: PID });
+  assert.deepEqual(calls[0], { method: 'GET', path: `/projects/${PID}/schedules`, body: undefined });
+  assert.match(text, /Dailey Schedules is off for this project/);
+  assert.match(text, /dailey_schedules_enable/);
+});
+
+test('list: schedules, pending hosts, credentials without values, signature status', async () => {
+  reply = () => ({ ok: true, status: 200, data: {
+    enabled: true, signature_seen: false,
+    schedules: [{ id: SID, name: 'send-reminders', source: 'platform', kind: 'visit', cron: '0 18 * * *', every_text: 'every day at 6pm', timezone: 'UTC', enabled: 1, paused_reason: null, pending_confirmation: 0, next_run_at: '2026-10-15T18:00:00.000Z', last_run_at: null, last_status: null, consecutive_failures: 0, method: 'POST', query_keys: [], body_bytes: 0, path: '/api/tasks/send-reminders' }],
+    hosts: [{ host: 'api.example.com', confirmed: false, confirmed_at: null }],
+    credentials: [{ id: 'c1', name: 'partner-api', host: 'api.example.com', kind: 'header', param_name: 'X-Api-Key', created_at: '2026-10-14', value: 'TOPSECRET' }],
+  } });
+  const text = await fake.run('dailey_schedules_list', { project_id: PID });
+  assert.match(text, /send-reminders/);
+  assert.match(text, /every day at 6pm/);
+  assert.doesNotMatch(text, /every every/);
+  assert.match(text, /api\.example\.com: waiting for your confirmation/);
+  assert.match(text, /dailey_schedules_host_confirm/);
+  assert.match(text, /partner-api: header X-Api-Key for api\.example\.com/);
+  assert.doesNotMatch(text, /TOPSECRET/);
+  assert.match(text, /not seen your app confirm a signature check yet/);
+});
+
+test('list: confirmed signature is reported', async () => {
+  reply = () => ({ ok: true, status: 200, data: { enabled: true, schedules: [], hosts: [], credentials: [], signature_seen: true } });
+  assert.match(await fake.run('dailey_schedules_list', { project_id: PID }), /has confirmed it checks/);
+});
+
+test('route_not_found becomes not available', async () => {
+  reply = () => ({ ok: false, status: 404, data: { error: 'Not found', code: 'route_not_found' } });
+  assert.equal(await fake.run('dailey_schedules_list', { project_id: PID }), 'Dailey Schedules is not available on your account yet.');
+});
+
+test('bad ids never reach the API', async () => {
+  assert.match(await fake.run('dailey_schedules_list', { project_id: '../../admin' }), /invalid project id/);
+  assert.match(await fake.run('dailey_schedules_history', { project_id: PID, schedule_id: '../x' }), /not a valid schedule id/);
+  assert.match(await fake.run('dailey_schedules_history', { project_id: PID, run_id: 'a%2Fb' }), /not a valid run id/);
+  assert.match(await fake.run('dailey_schedules_history', { project_id: PID, run_id: '........' }), /not a valid run id/);
+  assert.equal(calls.length, 0);
+});
+
+test('preview posts every/cron/timezone and lists next runs', async () => {
+  reply = () => ({ ok: true, status: 200, data: { cron: '0 9 * * 1-5', timezone: 'America/New_York', next_runs: ['2026-10-15T13:00:00.000Z'] } });
+  const text = await fake.run('dailey_schedules_preview', { project_id: PID, every: 'weekday at 9am', timezone: 'America/New_York' });
+  assert.deepEqual(calls[0], { method: 'POST', path: `/projects/${PID}/schedules/preview`, body: { every: 'weekday at 9am', timezone: 'America/New_York' } });
+  assert.match(text, /cron 0 9 \* \* 1-5/);
+  assert.match(text, /2026-10-15T13:00:00\.000Z/);
+});
+
+test('preview 400 shows the server sentence', async () => {
+  const s = 'I could not understand "x". Try something like "day at 6pm" or "hour".';
+  reply = () => ({ ok: false, status: 400, data: { error: s } });
+  assert.equal(await fake.run('dailey_schedules_preview', { project_id: PID, every: 'x' }), s);
+});
+
+test('history: list with schedule filter and limit, reasons, no preview', async () => {
+  reply = () => ({ ok: true, status: 200, data: [{ id: 'r1', schedule_id: SID, item_id: null, run_trigger: 'cron', scheduled_for: '2026-10-14T18:00:00.000Z', started_at: null, finished_at: null, status: 'failed', attempt: 1, reason: 'not_running', reason_message: 'Your app is not running right now.', http_status: null, duration_ms: 0, error: null, preview: 'HIDDEN' }] });
+  const text = await fake.run('dailey_schedules_history', { project_id: PID, schedule_id: SID, limit: 10 });
+  assert.equal(calls[0].path, `/projects/${PID}/schedules/runs?schedule_id=${SID}&limit=10`);
+  assert.match(text, /Your app is not running right now\./);
+  assert.doesNotMatch(text, /HIDDEN/);
+});
+
+test('history: empty list', async () => {
+  reply = () => ({ ok: true, status: 200, data: [] });
+  assert.equal(await fake.run('dailey_schedules_history', { project_id: PID }), 'No runs yet.');
+  assert.equal(calls[0].path, `/projects/${PID}/schedules/runs`);
+});
+
+test('history: one run shows the redacted preview', async () => {
+  reply = () => ({ ok: true, status: 200, data: { id: 'r1', schedule_id: SID, item_id: null, run_trigger: 'manual', scheduled_for: 'x', started_at: null, finished_at: null, status: 'succeeded', attempt: 1, reason: null, reason_message: null, http_status: 200, duration_ms: 40, error: null, preview: '{"sent":3}' } });
+  const text = await fake.run('dailey_schedules_history', { project_id: PID, run_id: SID });
+  assert.equal(calls[0].path, `/projects/${PID}/schedules/runs/${SID}`);
+  assert.match(text, /Response preview \(first 2 KB, secrets removed\):\n\{"sent":3\}/);
+});
+
+test('descriptions use the product name and no em dashes', () => {
+  assert.equal(fake.descriptions.size, 3);
+  for (const [name, d] of fake.descriptions) {
+    assert.match(d, /Dailey Schedules/, name);
+    assert.doesNotMatch(d, /—/, name);
+    assert.doesNotMatch(d, /Dailey OS/, name);
+  }
+});

@@ -23,6 +23,8 @@ import { registerPlatformTools } from './tools/platform.js';
 import { registerStorageTools } from './tools/storage.js';
 import { registerAiTools } from './tools/ai.js';
 import { registerEmailTools } from './tools/email.js';
+import { registerSchedulesTools } from './tools/schedules.js';
+import { schedulesToolsEnabled } from './tools/schedules-format.js';
 import { registerCreditTools } from './tools/credits.js';
 import { registerAddonTools } from './tools/addons.js';
 import { registerDaileyImagesTools } from './tools/dailey-images.js';
@@ -150,6 +152,8 @@ export function buildServer(opts: BuildOptions): McpServer {
   registerStorageTools(server);
   registerAiTools(server);
   registerEmailTools(server);
+  // Dailey Schedules (staging first; hidden until DAILEY_SCHEDULES_TOOLS=1).
+  if (schedulesToolsEnabled()) registerSchedulesTools(server);
   registerDaileyImagesTools(server);
   registerBackupTools(server);
   registerWordPressMigrateTools(server);
