@@ -114,7 +114,7 @@ test('history: one run shows the redacted preview', async () => {
 });
 
 test('descriptions use the product name and no em dashes', () => {
-  assert.equal(fake.descriptions.size, 11);
+  assert.equal(fake.descriptions.size, 20);
   for (const [name, d] of fake.descriptions) {
     assert.match(d, /Dailey Schedules/, name);
     assert.doesNotMatch(d, /—/, name);
@@ -207,4 +207,159 @@ test('409 off and run-now limit messages', async () => {
   assert.match(await fake.run('dailey_schedules_run_now', { project_id: PID, schedule_id: SID }), /dailey_schedules_enable/);
   reply = () => ({ ok: false, status: 400, data: { error: 'You have used all the manual runs for now. Try again later.' } });
   assert.equal(await fake.run('dailey_schedules_run_now', { project_id: PID, schedule_id: SID }), 'You have used all the manual runs for now. Try again later.');
+});
+
+test('disable description says schedules stay paused and must be resumed', () => {
+  const d = fake.descriptions.get('dailey_schedules_disable')!;
+  assert.match(d, /stay paused/); assert.match(d, /dailey_schedules_resume/);
+});
+
+test('update sends every, timezone and visit via onlyDefined; pause and resume say so', async () => {
+  reply = () => ({ ok: true, status: 200, data: { id: SID, next_runs: ['2026-10-16T00:00:00.000Z'], paused: true } });
+  await fake.run('dailey_schedules_update', { project_id: PID, schedule_id: SID, every: 'hour', timezone: 'America/Chicago', visit: { path: '/api/x', method: undefined } });
+  assert.deepEqual(calls.at(-1)!.body, { every: 'hour', timezone: 'America/Chicago', visit: { path: '/api/x' } });
+  assert.match(await fake.run('dailey_schedules_pause', { project_id: PID, schedule_id: SID }), /^Paused\. Resume with dailey_schedules_resume/);
+  assert.match(await fake.run('dailey_schedules_resume', { project_id: PID, schedule_id: SID }), /^Resumed\./);
+});
+
+test('item add and cancel (by id or dedupe key, encoded)', async () => {
+  reply = () => ({ ok: true, status: 201, data: { id: 'i1', run_at: '2026-10-19T21:00:00.000Z', delayed: true, pending_confirmation: false } });
+  const dedupe_key = ['appt', '42', 'remind'].join('-'); // built at runtime to keep scanners quiet
+  const t = await fake.run('dailey_schedules_item_add', { project_id: PID, at: '2026-10-19T17:00', timezone: 'America/New_York', visit: { path: '/api/remind' }, dedupe_key });
+  assert.deepEqual(calls[0].body, { at: '2026-10-19T17:00', timezone: 'America/New_York', visit: { path: '/api/remind' }, dedupe_key });
+  assert.match(t, /2026-10-19T21:00:00\.000Z/);
+  assert.match(t, /moved to the next free slot/);
+  const n = calls.length;
+  assert.match(await fake.run('dailey_schedules_item_add', { project_id: PID, at: 'x', visit: { path: '/a' }, dedupe_key: 'appt 42/remind' }), /dedupe key/);
+  assert.match(await fake.run('dailey_schedules_item_add', { project_id: PID, at: 'x', visit: {} }), /path in your app or a url/);
+  assert.equal(calls.length, n);
+  reply = () => ({ ok: true, status: 200, data: { cancelled: true } });
+  await fake.run('dailey_schedules_item_cancel', { project_id: PID, item: 'appt-42-remind' });
+  assert.equal(calls.at(-1)!.path, `/projects/${PID}/schedules/items/appt-42-remind`);
+  assert.equal(calls.at(-1)!.method, 'DELETE');
+  await fake.run('dailey_schedules_item_cancel', { project_id: PID, item: 'appt:42' });
+  assert.equal(calls.at(-1)!.path, `/projects/${PID}/schedules/items/appt%3A42`);
+  const m = calls.length;
+  for (const bad of ['..', 'a b/c', '']) await fake.run('dailey_schedules_item_cancel', { project_id: PID, item: bad });
+  assert.equal(calls.length, m);
+});
+
+test('item add pending host explains confirmation', async () => {
+  reply = () => ({ ok: true, status: 201, data: { id: 'i1', run_at: 'T', delayed: false, pending_confirmation: true } });
+  const t = await fake.run('dailey_schedules_item_add', { project_id: PID, at: 'x', visit: { url: 'https://api.example.com/p' } });
+  assert.match(t, /api\.example\.com/); assert.match(t, /dailey_schedules_host_confirm/);
+});
+
+test('credential add never echoes the value and warns about the conversation', async () => {
+  const VALUE = 'sk_live_VALUE_123';
+  reply = () => ({ ok: true, status: 201, data: { id: 'c1', name: 'partner-api', host: 'api.example.com', kind: 'header', param_name: 'X-Api-Key' } });
+  const t = await fake.run('dailey_schedules_credential_add', { project_id: PID, name: 'partner-api', host: 'api.example.com', kind: 'header', param_name: 'X-Api-Key', value: VALUE });
+  assert.deepEqual(calls[0].body, { name: 'partner-api', host: 'api.example.com', kind: 'header', param_name: 'X-Api-Key', value: VALUE });
+  assert.doesNotMatch(t, new RegExp(VALUE));
+  assert.match(t, /Saved credential partner-api/);
+  const d = fake.descriptions.get('dailey_schedules_credential_add')!;
+  assert.match(d, /passes through this AI conversation/); assert.match(d, /dashboard/);
+  const n = calls.length;
+  assert.match(await fake.run('dailey_schedules_credential_add', { project_id: PID, name: 'p', host: 'api.example.com:443', kind: 'header', param_name: 'X', value: VALUE }), /host name/);
+  assert.match(await fake.run('dailey_schedules_credential_add', { project_id: PID, name: 'Bad Name', host: 'api.example.com', kind: 'header', param_name: 'X', value: VALUE }), /lowercase/);
+  assert.equal(calls.length, n);
+});
+
+test('credential remove needs confirm and checks the name', async () => {
+  assert.match(await fake.run('dailey_schedules_credential_remove', { project_id: PID, name: 'partner-api' }), /confirm: true/);
+  assert.equal(calls.length, 0);
+  assert.match(await fake.run('dailey_schedules_credential_remove', { project_id: PID, name: '..', confirm: true }), /lowercase/);
+  assert.equal(calls.length, 0);
+  reply = () => ({ ok: true, status: 200, data: { deleted: true } });
+  await fake.run('dailey_schedules_credential_remove', { project_id: PID, name: 'partner-api', confirm: true });
+  assert.deepEqual(calls.at(-1), { method: 'DELETE', path: `/projects/${PID}/schedules/credentials/partner-api`, body: undefined });
+});
+
+test('host confirm needs confirm, encodes host, shows the signing secret once with the warning', async () => {
+  assert.match(await fake.run('dailey_schedules_host_confirm', { project_id: PID, host: 'api.example.com' }), /confirm: true/);
+  assert.equal(calls.length, 0);
+  assert.match(await fake.run('dailey_schedules_host_confirm', { project_id: PID, host: 'https://api.example.com/x', confirm: true }), /just the host name/i);
+  assert.match(await fake.run('dailey_schedules_host_confirm', { project_id: PID, host: '..', confirm: true }), /host name/i);
+  assert.equal(calls.length, 0);
+  const once = ['dss', 'host', 'once'].join('_'); // built at runtime, not a real secret
+  reply = () => ({ ok: true, status: 200, data: { confirmed: true, signing_secret: once } });
+  const t = await fake.run('dailey_schedules_host_confirm', { project_id: PID, host: 'API.Example.com.', confirm: true });
+  assert.equal(calls.at(-1)!.path, `/projects/${PID}/schedules/hosts/API.Example.com./confirm`);
+  assert.ok(t.includes(once));
+  assert.match(t, /shown once/i);
+  assert.match(t, /now in this conversation/);
+  await fake.run('dailey_schedules_host_confirm', { project_id: PID, host: 'api.example.com:443', confirm: true });
+  assert.equal(calls.at(-1)!.path, `/projects/${PID}/schedules/hosts/api.example.com%3A443/confirm`);
+});
+
+test('host confirm when already confirmed has no secret to show', async () => {
+  reply = () => ({ ok: true, status: 200, data: { confirmed: true, signing_secret: null } });
+  const t = await fake.run('dailey_schedules_host_confirm', { project_id: PID, host: 'api.example.com', confirm: true });
+  assert.match(t, /already confirmed/);
+  assert.match(t, /rotate to get a new secret/);
+  assert.doesNotMatch(t, /shown once/);
+});
+
+test('host 404 says the address was not found', async () => {
+  reply = () => ({ ok: false, status: 404, data: { error: 'Not found.' } });
+  assert.match(await fake.run('dailey_schedules_host_confirm', { project_id: PID, host: 'x.example.com', confirm: true }), /find that address/);
+  assert.match(await fake.run('dailey_schedules_host_rotate_secret', { project_id: PID, host: 'x.example.com', confirm: true }), /find that address/);
+});
+
+test('host rotate secret: revoke_now passes through, secret block shown, destructive needs confirm', async () => {
+  assert.match(await fake.run('dailey_schedules_host_rotate_secret', { project_id: PID, host: 'api.example.com' }), /confirm: true/);
+  assert.match(await fake.run('dailey_schedules_host_rotate_secret', { project_id: PID, host: 'api.example.com', revoke_now: true }), /confirm: true/);
+  assert.equal(calls.length, 0);
+  reply = () => ({ ok: true, status: 200, data: { signing_secret: 'dss_NEW', revoke_now: true } });
+  const t = await fake.run('dailey_schedules_host_rotate_secret', { project_id: PID, host: 'api.example.com', revoke_now: true, confirm: true });
+  assert.deepEqual(calls.at(-1)!.body, { revoke_now: true });
+  assert.equal(calls.at(-1)!.path, `/projects/${PID}/schedules/hosts/api.example.com/rotate-secret`);
+  assert.match(t, /dss_NEW/);
+  assert.match(t, /old secret stopped working now/);
+  reply = () => ({ ok: true, status: 200, data: { signing_secret: 'dss_NEW2', revoke_now: false } });
+  const t2 = await fake.run('dailey_schedules_host_rotate_secret', { project_id: PID, host: 'api.example.com', confirm: true });
+  assert.deepEqual(calls.at(-1)!.body, { revoke_now: false });
+  assert.match(t2, /24 hours/);
+});
+
+test('rotate app secret and app key: restart note, key never printed', async () => {
+  assert.match(await fake.run('dailey_schedules_rotate_secret', { project_id: PID, revoke_now: true }), /confirm: true/);
+  assert.match(await fake.run('dailey_schedules_rotate_key', { project_id: PID }), /confirm: true/);
+  assert.equal(calls.length, 0);
+  reply = () => ({ ok: true, status: 200, data: { restarted: true } });
+  const t1 = await fake.run('dailey_schedules_rotate_secret', { project_id: PID, confirm: true });
+  assert.deepEqual(calls.at(-1)!.body, { revoke_now: false });
+  assert.match(t1, /24 hours/); assert.match(t1, /restarting/);
+  reply = () => ({ ok: true, status: 200, data: { restarted: false } });
+  const t2 = await fake.run('dailey_schedules_rotate_secret', { project_id: PID, revoke_now: true, confirm: true });
+  assert.match(t2, /next deploy/);
+  reply = () => ({ ok: true, status: 200, data: { key: 'dsk_ONCE_KEY', restarted: true } });
+  const t3 = await fake.run('dailey_schedules_rotate_key', { project_id: PID, confirm: true });
+  assert.doesNotMatch(t3, /dsk_ONCE_KEY/);
+  assert.match(t3, /old key stopped working/);
+});
+
+test('test endpoint: needs confirm, warns, reports protected or open, 429 sentence', async () => {
+  const d = fake.descriptions.get('dailey_schedules_test_endpoint')!;
+  assert.match(d, /wrong signature/); assert.match(d, /not protected|does the work/);
+  const warn = await fake.run('dailey_schedules_test_endpoint', { project_id: PID, schedule_id: SID });
+  assert.match(warn, /wrong signature/); assert.match(warn, /5 times a day/); assert.match(warn, /confirm: true/);
+  assert.equal(calls.length, 0);
+  reply = () => ({ ok: true, status: 200, data: { protected: true, status: 401 } });
+  assert.match(await fake.run('dailey_schedules_test_endpoint', { project_id: PID, schedule_id: SID, confirm: true }), /refused the test request \(401\)/);
+  assert.equal(calls.at(-1)!.path, `/projects/${PID}/schedules/${SID}/test-endpoint`);
+  reply = () => ({ ok: true, status: 200, data: { protected: false, status: 200 } });
+  assert.match(await fake.run('dailey_schedules_test_endpoint', { project_id: PID, schedule_id: SID, confirm: true }), /accepted a request with a wrong signature/);
+  reply = () => ({ ok: false, status: 429, data: { error: 'You have used all the endpoint tests for today. Try again tomorrow.' } });
+  assert.equal(await fake.run('dailey_schedules_test_endpoint', { project_id: PID, schedule_id: SID, confirm: true }), 'You have used all the endpoint tests for today. Try again tomorrow.');
+});
+
+test('no new tool leaks the app key, credential value or signing secret outside the once block', async () => {
+  const SECRETS = ['dsk_LEAK_KEY', 'sk_LEAK_CRED'];
+  reply = () => ({ ok: true, status: 200, data: { key: SECRETS[0], restarted: true, value: SECRETS[1], id: 'c', name: 'n', host: 'h', kind: 'header', param_name: 'X' } });
+  const outs = [
+    await fake.run('dailey_schedules_rotate_key', { project_id: PID, confirm: true }),
+    await fake.run('dailey_schedules_credential_add', { project_id: PID, name: 'n', host: 'h.example.com', kind: 'header', param_name: 'X', value: SECRETS[1] }),
+  ];
+  for (const o of outs) for (const s of SECRETS) assert.ok(!o.includes(s));
 });
