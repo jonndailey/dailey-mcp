@@ -114,10 +114,97 @@ test('history: one run shows the redacted preview', async () => {
 });
 
 test('descriptions use the product name and no em dashes', () => {
-  assert.equal(fake.descriptions.size, 3);
+  assert.equal(fake.descriptions.size, 11);
   for (const [name, d] of fake.descriptions) {
     assert.match(d, /Dailey Schedules/, name);
     assert.doesNotMatch(d, /—/, name);
     assert.doesNotMatch(d, /Dailey OS/, name);
   }
+});
+
+test('enable: says what the app gets, never prints the app key', async () => {
+  reply = () => ({ ok: true, status: 200, data: { enabled: true, api_url: 'https://os-stg.dailey.cloud/api/schedules/v1', key: 'dsk_SECRET_ONCE' } });
+  const text = await fake.run('dailey_schedules_enable', { project_id: PID });
+  assert.equal(calls[0].method, 'POST'); assert.equal(calls[0].path, `/projects/${PID}/schedules/enable`);
+  assert.doesNotMatch(text, /dsk_SECRET_ONCE/);
+  for (const v of ['DAILEY_SCHEDULES_SECRET', 'DAILEY_SCHEDULES_API_URL', 'DAILEY_SCHEDULES_KEY']) assert.match(text, new RegExp(v));
+  assert.match(text, /restart/i);
+});
+
+test('enable twice: server sentence', async () => {
+  reply = () => ({ ok: false, status: 400, data: { error: 'Dailey Schedules is already on for this project.' } });
+  assert.equal(await fake.run('dailey_schedules_enable', { project_id: PID }), 'Dailey Schedules is already on for this project.');
+});
+
+test('disable needs confirm: true and says what stops and how to resume', async () => {
+  assert.match(await fake.run('dailey_schedules_disable', { project_id: PID }), /confirm: true/);
+  assert.equal(calls.length, 0);
+  reply = () => ({ ok: true, status: 200, data: { enabled: false } });
+  const text = await fake.run('dailey_schedules_disable', { project_id: PID, confirm: true });
+  assert.equal(calls[0].path, `/projects/${PID}/schedules/disable`);
+  assert.match(text, /turned off/);
+  assert.match(text, /dailey_schedules_resume/);
+});
+
+test('create: own-app path, sends only given fields, shows next runs', async () => {
+  reply = () => ({ ok: true, status: 201, data: { id: SID, next_runs: ['2026-10-15T22:00:00.000Z'], pending_confirmation: false } });
+  const text = await fake.run('dailey_schedules_create', { project_id: PID, name: 'send-reminders', every: 'day at 6pm', timezone: 'America/New_York', visit: { path: '/api/tasks/send-reminders', method: 'POST' } });
+  assert.deepEqual(calls[0], { method: 'POST', path: `/projects/${PID}/schedules`, body: { name: 'send-reminders', every: 'day at 6pm', timezone: 'America/New_York', visit: { path: '/api/tasks/send-reminders', method: 'POST' } } });
+  assert.match(text, /Created send-reminders/);
+  assert.match(text, new RegExp(SID));
+  assert.match(text, /2026-10-15T22:00:00\.000Z/);
+  assert.match(text, /verify/i);
+});
+
+test('create: new external host is pending and explains confirmation', async () => {
+  reply = () => ({ ok: true, status: 201, data: { id: SID, next_runs: [], pending_confirmation: true } });
+  const text = await fake.run('dailey_schedules_create', { project_id: PID, name: 'ping-partner', every: 'hour', visit: { url: 'https://api.example.com/hook' } });
+  assert.match(text, /will not run until you confirm/);
+  assert.match(text, /dailey_schedules_host_confirm/);
+  assert.match(text, /api\.example\.com/);
+});
+
+test('create: both or neither of path and url is refused locally', async () => {
+  assert.match(await fake.run('dailey_schedules_create', { project_id: PID, name: 'x', every: 'hour', visit: {} }), /path in your app or a url/);
+  assert.match(await fake.run('dailey_schedules_create', { project_id: PID, name: 'x', every: 'hour', visit: { path: '/a', url: 'https://b.com' } }), /either a path or a url, not both/);
+  assert.equal(calls.length, 0);
+});
+
+test('update, delete, pause, resume, run now hit the right routes', async () => {
+  reply = (c) => ({ ok: true, status: c.path.endsWith('run-now') ? 202 : 200, data: c.path.endsWith('run-now') ? { run_id: 'r9' } : { id: SID, next_runs: ['2026-10-16T00:00:00.000Z'], deleted: true, paused: true } });
+  await fake.run('dailey_schedules_update', { project_id: PID, schedule_id: SID, cron: '0 0 * * *' });
+  assert.deepEqual(calls.at(-1), { method: 'PATCH', path: `/projects/${PID}/schedules/${SID}`, body: { cron: '0 0 * * *' } });
+  assert.match(await fake.run('dailey_schedules_delete', { project_id: PID, schedule_id: SID }), /confirm: true/);
+  await fake.run('dailey_schedules_delete', { project_id: PID, schedule_id: SID, confirm: true });
+  assert.deepEqual(calls.at(-1), { method: 'DELETE', path: `/projects/${PID}/schedules/${SID}`, body: undefined });
+  await fake.run('dailey_schedules_pause', { project_id: PID, schedule_id: SID });
+  assert.equal(calls.at(-1)!.path, `/projects/${PID}/schedules/${SID}/pause`);
+  await fake.run('dailey_schedules_resume', { project_id: PID, schedule_id: SID });
+  assert.equal(calls.at(-1)!.path, `/projects/${PID}/schedules/${SID}/resume`);
+  const t = await fake.run('dailey_schedules_run_now', { project_id: PID, schedule_id: SID });
+  assert.equal(calls.at(-1)!.path, `/projects/${PID}/schedules/${SID}/run-now`);
+  assert.match(t, /r9/); assert.match(t, /dailey_schedules_history/);
+});
+
+test('write tools refuse bad schedule ids before any request', async () => {
+  for (const t of ['update', 'delete', 'pause', 'resume', 'run_now']) {
+    for (const id of ['..', 'a%2Fb', '../x']) {
+      assert.match(await fake.run(`dailey_schedules_${t}`, { project_id: PID, schedule_id: id, confirm: true }), /not a valid schedule id/);
+    }
+  }
+  assert.equal(calls.length, 0);
+});
+
+test('repo schedule edit refusal and resume plan refusal pass through', async () => {
+  reply = () => ({ ok: false, status: 400, data: { error: 'This schedule comes from your code (dailey.yaml). Change it there and deploy.' } });
+  assert.match(await fake.run('dailey_schedules_update', { project_id: PID, schedule_id: SID, every: 'hour' }), /dailey\.yaml/);
+  reply = () => ({ ok: false, status: 400, data: { error: 'Your plan includes 3 schedules, and this project\'s account is using all of them.' } });
+  assert.match(await fake.run('dailey_schedules_resume', { project_id: PID, schedule_id: SID }), /includes 3 schedules/);
+});
+
+test('409 off and run-now limit messages', async () => {
+  reply = () => ({ ok: false, status: 409, data: { error: 'Turn on Dailey Schedules for this project first.' } });
+  assert.match(await fake.run('dailey_schedules_run_now', { project_id: PID, schedule_id: SID }), /dailey_schedules_enable/);
+  reply = () => ({ ok: false, status: 400, data: { error: 'You have used all the manual runs for now. Try again later.' } });
+  assert.equal(await fake.run('dailey_schedules_run_now', { project_id: PID, schedule_id: SID }), 'You have used all the manual runs for now. Try again later.');
 });
