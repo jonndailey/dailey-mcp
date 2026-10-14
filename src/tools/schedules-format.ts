@@ -8,6 +8,8 @@ export const TURN_ON_FIRST = 'Dailey Schedules is off for this project. Turn it 
 const NOT_FOUND = 'We could not find that project or schedule in this account. Check the id with dailey_schedules_list.';
 const NOT_FOUND_HOST = 'We could not find that address for this project. Check it with dailey_schedules_list.';
 const NOT_FOUND_ITEM = 'We could not find that one-time visit.';
+const NOT_FOUND_RUN = 'We could not find that run.';
+const NOT_FOUND_CREDENTIAL = 'We could not find that credential.';
 const HOST_HELP = 'Give just the host name, like api.example.com.';
 
 export type ApiRes = { ok: boolean; status: number; data: unknown };
@@ -34,7 +36,7 @@ function serverMessage(data: unknown): string {
   return '';
 }
 
-export function schedulesErrorText(res: ApiRes, subject: 'schedule' | 'host' | 'item' = 'schedule'): string {
+export function schedulesErrorText(res: ApiRes, subject: 'schedule' | 'host' | 'item' | 'run' | 'credential' = 'schedule'): string {
   const d: any = res.data;
   if (res.status === 404 && d && typeof d === 'object' && d.code === 'route_not_found') return NOT_AVAILABLE;
   if (res.status === 401) return 'You are not signed in to Dailey Cloud here. Run `dailey login`, then `dailey mcp setup`, and reconnect.';
@@ -43,7 +45,7 @@ export function schedulesErrorText(res: ApiRes, subject: 'schedule' | 'host' | '
     if (code === 'no_manager_grant' || code === 'manager_insufficient_role') return "You do not have access to manage that account's projects.";
     return 'Dailey Schedules could not do that (no access).';
   }
-  if (res.status === 404) return subject === 'host' ? NOT_FOUND_HOST : subject === 'item' ? NOT_FOUND_ITEM : NOT_FOUND;
+  if (res.status === 404) return subject === 'host' ? NOT_FOUND_HOST : subject === 'item' ? NOT_FOUND_ITEM : subject === 'run' ? NOT_FOUND_RUN : subject === 'credential' ? NOT_FOUND_CREDENTIAL : NOT_FOUND;
   if (res.status === 409) return TURN_ON_FIRST;
   if (res.status >= 502 && res.status <= 504) return 'Dailey Cloud did not answer. Try again in a minute.';
   const msg = serverMessage(d);
@@ -132,6 +134,7 @@ export function checkHostInput(host: string, strict = false): string | null {
 }
 
 export const SCHEDULES_GUIDE = `
+
 ### Dailey Schedules (work on a timer)
 - Runs work on a schedule ("every weekday at 9am", or cron) or once at a set time, by visiting a path in the app
   or an outside https address. Turn on per project with dailey_schedules_enable (dailey_schedules_disable turns it
@@ -153,5 +156,4 @@ export const SCHEDULES_GUIDE = `
   ALLOWED_HOSTS, Vite server.allowedHosts) must allow the slug.
 - A new outside host waits for the owner's confirmation (dailey_schedules_host_confirm), which shows that host's
   signing secret once. Credentials for outside hosts are saved with dailey_schedules_credential_add, never in code.
-- dailey_schedules_test_endpoint sends one request with a wrong signature to check the app refuses it. Ask first.
-`;
+- dailey_schedules_test_endpoint sends one request with a wrong signature to check the app refuses it. Ask first.`;

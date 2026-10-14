@@ -403,3 +403,34 @@ test('dailey_os_guide includes the Dailey Schedules section only with the flag',
     if (prev === undefined) delete process.env.DAILEY_SCHEDULES_TOOLS; else process.env.DAILEY_SCHEDULES_TOOLS = prev;
   }
 });
+
+test('create and update refuse both every and cron; create refuses neither', async () => {
+  assert.equal(await fake.run('dailey_schedules_create', { project_id: PID, name: 'a', every: 'day', cron: '0 1 * * *', visit: { path: '/x' } }), 'Give either every or cron, not both.');
+  assert.equal(await fake.run('dailey_schedules_create', { project_id: PID, name: 'a', visit: { path: '/x' } }), 'Give every or cron.');
+  assert.equal(await fake.run('dailey_schedules_update', { project_id: PID, schedule_id: SID, every: 'day', cron: '0 1 * * *' }), 'Give either every or cron, not both.');
+  assert.equal(calls.length, 0);
+});
+
+test('history run_id 404 and credential_remove 404 use their own subjects', async () => {
+  reply = () => ({ ok: false, status: 404, data: { error: 'Not found.' } });
+  assert.equal(await fake.run('dailey_schedules_history', { project_id: PID, run_id: SID }), 'We could not find that run.');
+  assert.equal(await fake.run('dailey_schedules_credential_remove', { project_id: PID, name: 'partner-api', confirm: true }), 'We could not find that credential.');
+});
+
+test('dailey_os_guide with the flag off has no extra blank lines around the Email and Usage sections', async () => {
+  const { registerPlatformTools } = await import('../src/tools/platform.js');
+  const prev = process.env.DAILEY_SCHEDULES_TOOLS;
+  try {
+    for (const flag of [undefined, '1']) {
+      if (flag === undefined) delete process.env.DAILEY_SCHEDULES_TOOLS; else process.env.DAILEY_SCHEDULES_TOOLS = flag;
+      const f = makeFakeServer();
+      registerPlatformTools(f.server as any);
+      const text = await f.run('dailey_os_guide', {});
+      assert.doesNotMatch(text, /\n\n\n/);
+      if (!flag) assert.ok(text.includes('DAILEY_EMAIL_API_KEY.\n\n### Usage + billing for all of the above'));
+      else assert.ok(text.includes('DAILEY_EMAIL_API_KEY.\n\n### Dailey Schedules (work on a timer)') && /refuses it\. Ask first\.\n\n### Usage/.test(text));
+    }
+  } finally {
+    if (prev === undefined) delete process.env.DAILEY_SCHEDULES_TOOLS; else process.env.DAILEY_SCHEDULES_TOOLS = prev;
+  }
+});

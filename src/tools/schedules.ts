@@ -108,7 +108,7 @@ export function registerSchedulesTools(server: McpServer) {
       if (run_id !== undefined && !isSafeId(run_id)) return bad('run', run_id);
       if (run_id) {
         const res = await apiRequest<Run>('GET', `${base(project_id)}/runs/${enc(run_id)}`);
-        if (!res.ok) return textResult(schedulesErrorText(res));
+        if (!res.ok) return textResult(schedulesErrorText(res, 'run'));
         const r = res.data;
         const lines = [describeRun(r)];
         if (r.preview) lines.push('', 'Response preview (first 2 KB, secrets removed):', r.preview);
@@ -174,6 +174,8 @@ export function registerSchedulesTools(server: McpServer) {
     },
     async ({ project_id, name, every, cron, timezone, visit, concurrency }) => {
       if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
+      if (every !== undefined && cron !== undefined) return textResult('Give either every or cron, not both.');
+      if (every === undefined && cron === undefined) return textResult('Give every or cron.');
       const p = visitProblem(visit); if (p) return textResult(p);
       const res = await apiRequest<{ id: string; next_runs: string[]; pending_confirmation: boolean }>('POST', base(project_id),
         onlyDefined({ name, every, cron, timezone, visit: onlyDefined(visit), concurrency }));
@@ -202,6 +204,7 @@ export function registerSchedulesTools(server: McpServer) {
     async ({ project_id, schedule_id, every, cron, timezone, visit }) => {
       if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       if (!isSafeId(schedule_id)) return bad('schedule', schedule_id);
+      if (every !== undefined && cron !== undefined) return textResult('Give either every or cron, not both.');
       if (visit) { const p = visitProblem(visit); if (p) return textResult(p); }
       const res = await apiRequest<{ id: string; next_runs: string[] }>('PATCH', `${base(project_id)}/${enc(schedule_id)}`,
         onlyDefined({ every, cron, timezone, visit: visit ? onlyDefined(visit) : undefined }));
@@ -314,7 +317,7 @@ export function registerSchedulesTools(server: McpServer) {
       const n = checkName(name); if (n) return textResult(n);
       if (confirm !== true) return textResult('This deletes the credential. Ask the user, then call again with confirm: true.');
       const res = await apiRequest('DELETE', `${base(project_id)}/credentials/${enc(name)}`);
-      if (!res.ok) return textResult(schedulesErrorText(res));
+      if (!res.ok) return textResult(schedulesErrorText(res, 'credential'));
       return textResult('Deleted.');
     });
 
