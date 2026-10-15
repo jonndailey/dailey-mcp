@@ -157,6 +157,9 @@ test('valid bearer: initialize + tools/list work on one cached check; excludes a
   // includeAccountSwitch and includeAdmin are FALSE on the remote surface.
   assert.ok(!names.includes('dailey_use_account'), 'dailey_use_account must not be on the remote surface');
   assert.ok(!names.includes('dailey_project_transfer_plan'), 'dailey_project_transfer_plan must not be on the remote surface');
+  // Local-file tools read the POD's filesystem when hosted (H4): never listed.
+  assert.ok(!names.includes('dailey_wordpress_migrate'), 'dailey_wordpress_migrate must not be on the hosted surface');
+  assert.ok(!names.includes('dailey_wordpress_import'), 'dailey_wordpress_import must not be on the hosted surface');
   await client.close();
   assert.equal(upstreamHits.get('valid-token'), 1, 'initialize, notifications/initialized and tools/list share one cached check');
   assert.ok(mod.getRateCounters().global > before.global, 'validated requests count toward the global window');

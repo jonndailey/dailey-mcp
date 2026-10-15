@@ -95,6 +95,7 @@ const server = buildServer({
   includeAdmin: true,
   includeLocalAuth: true,
   includeAccountSwitch: true,
+  includeLocalFiles: true,
   instructions: newerVersion ? outdatedNotice(newerVersion) : undefined,
 });
 

@@ -6,6 +6,8 @@ import { join, basename } from 'node:path';
 import { analyze, stage, type BundleReport } from '@daileyos/wp-bundle';
 import { apiRequest, formatError, textResult, isValidProjectId, invalidProjectIdResult } from '../api.js';
 import { putFileToPresignedUrl } from '../upload.js';
+// Belt and braces for H4: refuse in a hosted request even if ever registered there.
+import { isHostedRequest, HOSTED_LOCAL_FILES_UNAVAILABLE } from '../context.js';
 
 // Client-side preflight cap for `analyze`, before any project/plan is known.
 // The server enforces the customer's real plan limit once a target project
@@ -60,6 +62,7 @@ export function registerWordPressImportTools(server: McpServer) {
       migration_id: z.string().optional().describe('Migration ID — required for action=status'),
     },
     async ({ action, bundle_file, project_id, confirm, allow_unsafe, migration_id }) => {
+      if (isHostedRequest()) return textResult(HOSTED_LOCAL_FILES_UNAVAILABLE);
       if (project_id !== undefined && !isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       if (action === 'status') {
         if (!project_id || !migration_id) return textResult('project_id and migration_id are required for action=status');

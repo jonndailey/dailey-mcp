@@ -34,6 +34,7 @@ Zero changes to the 41 tool modules.
 **Core property: the server is credential-free.** It holds no API keys, no DB creds, no service tokens — bearer tokens arrive per-request, live only in the request's AsyncLocalStorage, and die with it. A fully compromised pod yields no standing secrets. Preserve this property in all future changes (nothing secret in env/ConfigMap/Secret for this workload).
 
 - Admin, account-switch, and project-transfer tools never registered on the remote surface (auth tools SHIP per the amended Decisions — pure API calls).
+- **AMENDED 2026-10-15 (security review H4, 10-14 M2):** tools that read LOCAL file paths (`dailey_wordpress_migrate`, `dailey_wordpress_import`) are never registered remotely (`includeLocalFiles: false` in `http.ts`); on the shared pod "local" is the pod's own filesystem. Both handlers also refuse whenever a request context is set.
 - In-process per-token rate limit: 60 requests/min (fixed window, `Map<tokenHash, {count, windowStart}>`); over-limit → HTTP 429. Token keys are sha256 truncations — raw tokens never held beyond the request, never logged.
 - No request-body logging; access log line = method, path, status, duration, token hash prefix (8 chars), and tool name when the request is a tools/call (NEVER tool arguments — they can contain user secrets). Errors returned to clients never echo the token.
 - Request body cap: 1 MiB (413 above). Server timeouts: headersTimeout 10s, requestTimeout 120s (long tool calls allowed; slowloris not).

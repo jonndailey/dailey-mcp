@@ -150,7 +150,7 @@ export function createHttpServer(): http.Server {
       if (toolName) logSuffix += ` tool=${toolName}`;
 
       // Stateless: fresh server+transport per request; identity lives in ALS.
-      const mcp = buildServer({ includeAdmin: false, includeLocalAuth: true, includeAccountSwitch: false });
+      const mcp = buildServer({ includeAdmin: false, includeLocalAuth: true, includeAccountSwitch: false, includeLocalFiles: false });
       const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
       cors(res);
       res.on('error', () => {});
