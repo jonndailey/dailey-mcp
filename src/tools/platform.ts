@@ -87,7 +87,7 @@ export function registerPlatformTools(server: McpServer) {
 
   server.tool(
     'dailey_os_guide',
-    'Return a guide on how Dailey OS works and the right approach for common tasks. Call this when you need context on platform architecture, database access patterns, deployment flow, the built-in AI / GPU compute / image-generation / voice / email primitives, or when a user asks how to do something in DOS and you are unsure of the right path.',
+    'Return a guide on how Dailey Cloud works and the right approach for common tasks. Call this when you need context on platform architecture, database access patterns, deployment flow, the built-in AI / GPU compute / image-generation (Dailey Images) / voice (Dailey Voice) / email primitives, or when a user asks how to do something on Dailey Cloud and you are unsure of the right path.',
     {},
     async () => {
       return textResult(`
@@ -168,15 +168,24 @@ already offers it, pre-wired and on one bill:
 - Use this for features like "summarize", "extract tasks from text/images", chatbots.
 
 ### Dailey Compute (managed GPU jobs)
-- GPU workloads (e.g. audio transcription) without owning GPUs. Enable: dailey_compute_enable
+- GPU workloads without owning GPUs. Enable: dailey_compute_enable
   → injects DAILEY_COMPUTE_URL / DAILEY_COMPUTE_KEY. Info: dailey_ai_info (covers both).
+- Available workloads: transcribe (audio/video to text with timestamps) and image-edit
+  (background removal and upscaling). The catalog is GET /api/projects/:id/compute/catalog.
+- The old "image" (text-to-image) and "tts" (text-to-speech) compute workloads are retired
+  and return HTTP 410. Never suggest them. For image generation use Dailey Images; for
+  text-to-speech use Dailey Voice (both below).
 
 ### Dailey Images (hosted image generation)
 - Text-to-image (Flux), metered per image. Tools: dailey_images_info / dailey_images_enable /
-  dailey_images_generate.
+  dailey_images_generate. App route: POST /api/projects/:id/images/generations.
+- This is THE way to generate images on Dailey Cloud (not a Compute workload).
 
 ### Dailey Voice (TTS + STT)
 - Metered text-to-speech and speech-to-text, drawn from the prepaid credit balance.
+- Enable: POST /api/projects/:id/ai/voice/enable. Text-to-speech: POST /api/projects/:id/ai/audio/speech.
+  Speech-to-text: POST /api/projects/:id/ai/audio/transcriptions.
+- This is THE way to do text-to-speech on Dailey Cloud (not a Compute workload).
 
 ### Dailey Email (transactional email)
 - Sends from <slug>@send.dailey.cloud, zero DNS setup, $10/mo incl. 10k emails.
