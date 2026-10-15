@@ -1,9 +1,9 @@
 import http from 'node:http';
-import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { buildServer } from './server.js';
 import { requestContext } from './context.js';
+import { createTokenChecker, hashToken } from './token-check.js';
 
 const PORT = Number(process.env.PORT || 8080);
 const BODY_LIMIT = 1024 * 1024; // 1 MiB
@@ -17,6 +17,8 @@ export const MAX_INFLIGHT = 50;
 let inflight = 0;
 
 // ── fixed-window rate limiting ──────────────────────────────────────────────
+// Only tokens the customer-api has accepted reach allow(): an unvalidated
+// token never counts toward either window (security review 2026-10-15, H3).
 const tokenWindows = new Map<string, { count: number; windowStart: number }>();
 let globalWindow = { count: 0, windowStart: Date.now() };
 function allow(tokenHash: string): 'ok' | 'token' | 'global' {
@@ -32,8 +34,13 @@ setInterval(() => { // stop the map growing forever
   for (const [k, w] of tokenWindows) if (w.windowStart < cutoff) tokenWindows.delete(k);
 }, 60_000).unref();
 
-function hashToken(token: string): string {
-  return createHash('sha256').update(token).digest('hex');
+// Bearer gate: one cached GET /customers/me per token per minute (token-check.ts).
+const tokenChecker = createTokenChecker();
+const WWW_AUTHENTICATE = `Bearer resource_metadata="${RESOURCE}/.well-known/oauth-protected-resource"`;
+
+/** Rate-window state, for tests: proves unvalidated tokens never count. */
+export function getRateCounters(): { global: number; tokens: number } {
+  return { global: globalWindow.count, tokens: tokenWindows.size };
 }
 
 function cors(res: http.ServerResponse): void {
@@ -97,12 +104,29 @@ export function createHttpServer(): http.Server {
       const m = /^Bearer\s+(\S+)$/i.exec(auth);
       if (!m) {
         rpcError(res, 401, -32001, 'Missing bearer token. Get a DOS API token from https://os.dailey.cloud and send Authorization: Bearer <token>.',
-          { 'WWW-Authenticate': `Bearer resource_metadata="${RESOURCE}/.well-known/oauth-protected-resource"` });
+          { 'WWW-Authenticate': WWW_AUTHENTICATE });
         return;
       }
       const token = m[1];
       const tokenHash = hashToken(token);
       logSuffix = ` tok=${tokenHash.slice(0, 8)}`;
+      // Cheap structural rejection first: a malformed request costs no upstream call.
+      if (!/^application\/json/i.test(req.headers['content-type'] || '')) {
+        rpcError(res, 415, -32600, 'Content-Type must be application/json'); return;
+      }
+
+      // Authenticate BEFORE the rate windows and before any McpServer exists, so
+      // initialize/tools/list with a junk token get a small 401 and cost nothing.
+      const tokenVerdict = await tokenChecker.check(token, tokenHash);
+      if (tokenVerdict === 'invalid') {
+        rpcError(res, 401, -32001, 'Invalid or expired token. Create an API token at https://os.dailey.cloud and send Authorization: Bearer <token>.',
+          { 'WWW-Authenticate': `${WWW_AUTHENTICATE}, error="invalid_token"` });
+        return;
+      }
+      if (tokenVerdict === 'unavailable') {
+        rpcError(res, 503, -32000, 'Could not verify the token right now. Retry shortly.', { 'Retry-After': '10' });
+        return;
+      }
 
       const verdict = allow(tokenHash);
       if (verdict !== 'ok') {
@@ -118,9 +142,6 @@ export function createHttpServer(): http.Server {
       inflight++;
       const done = () => { inflight = Math.max(0, inflight - 1); };
       res.once('close', done);
-      if (!/^application\/json/i.test(req.headers['content-type'] || '')) {
-        rpcError(res, 415, -32600, 'Content-Type must be application/json'); return;
-      }
       const raw = await readBody(req);
       if (raw === null) { rpcError(res, 413, -32600, 'Body too large (limit 1 MiB)'); return; }
       let parsed: unknown;
@@ -129,7 +150,7 @@ export function createHttpServer(): http.Server {
       if (toolName) logSuffix += ` tool=${toolName}`;
 
       // Stateless: fresh server+transport per request; identity lives in ALS.
-      const mcp = buildServer({ includeAdmin: false, includeLocalAuth: true, includeAccountSwitch: false });
+      const mcp = buildServer({ includeAdmin: false, includeLocalAuth: true, includeAccountSwitch: false, includeLocalFiles: false });
       const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
       cors(res);
       res.on('error', () => {});

@@ -4,6 +4,8 @@ import { existsSync } from 'node:fs';
 import { basename } from 'node:path';
 import { apiRequest, formatError, textResult, isValidProjectId, invalidProjectIdResult } from '../api.js';
 import { putFileToPresignedUrl } from '../upload.js';
+// Belt and braces for H4: refuse in a hosted request even if ever registered there.
+import { isHostedRequest, HOSTED_LOCAL_FILES_UNAVAILABLE } from '../context.js';
 
 interface StartResponse {
   migration_id: string;
@@ -31,6 +33,7 @@ export function registerWordPressMigrateTools(server: McpServer) {
       migration_id: z.string().optional().describe('Migration ID — required for status'),
     },
     async ({ project_id, action, db_file, content_file, old_url, table_prefix, allow_unsafe, migration_id }) => {
+      if (isHostedRequest()) return textResult(HOSTED_LOCAL_FILES_UNAVAILABLE);
       if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
       if (action === 'status') {
         if (!migration_id) return textResult('migration_id is required for action=status');

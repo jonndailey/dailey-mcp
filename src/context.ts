@@ -10,3 +10,12 @@ export interface RequestIdentity {
 }
 
 export const requestContext = new AsyncLocalStorage<RequestIdentity>();
+
+/** True inside a hosted (HTTP) request; the stdio entry never sets the store. */
+export function isHostedRequest(): boolean {
+  return requestContext.getStore() !== undefined;
+}
+
+/** Answer for tools that read local paths, which on the hosted server would be
+ *  the shared pod's own filesystem (security review 2026-10-15, H4). */
+export const HOSTED_LOCAL_FILES_UNAVAILABLE = 'Not available on the hosted server. Use the local MCP or the CLI.';

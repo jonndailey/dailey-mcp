@@ -6,7 +6,7 @@ import { getActiveAccount, setActiveAccount } from '../src/api.js';
 // dailey_use_account must be registered WITHOUT the per-call scope wrapper, so
 // its session-set survives (the wrapper's finally-restore used to undo it).
 test('dailey_use_account is registered raw (no wrapper-injected account param)', () => {
-  const server = buildServer({ includeAdmin: false, includeLocalAuth: true, includeAccountSwitch: true });
+  const server = buildServer({ includeAdmin: false, includeLocalAuth: true, includeAccountSwitch: true, includeLocalFiles: true });
   const reg = (server as any)._registeredTools ?? {};
   const use = reg['dailey_use_account'];
   assert.ok(use, 'dailey_use_account should be registered when includeAccountSwitch');

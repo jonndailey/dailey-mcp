@@ -8,9 +8,30 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Least privilege for any job without its own block. A read-only token means a
+# hostile dependency running under `npm ci` cannot push to this repo. The publish
+# job below declares exactly what OIDC trusted publishing needs.
+permissions:
+  contents: read
+
 jobs:
   build:
-    runs-on: dailey-mcp-runners
+    # GitHub-hosted for every event (security review 2026-10-15, H2). This repo
+    # is PUBLIC and this job runs `npm ci`, which executes the lifecycle scripts
+    # of whatever package.json a pull request carries. On the self-hosted
+    # dailey-mcp-runners (ARC inside the prod cluster, privileged docker:dind with
+    # the docker socket mounted) a fork PR's `preinstall` could become root on a
+    # prod worker node. Nothing here needs the cluster: the job builds and
+    # smoke-tests a stdio server, and publish already runs on ubuntu-latest. Same
+    # move the dashboard made in ci.yml. Previously: runs-on: dailey-mcp-runners
+    #
+    # Never put a job that runs on pull_request back on a self-hosted runner. A
+    # push-only job that truly needs one must also carry:
+    #   if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    # That guard only protects the workflow as written on main: a fork PR can
+    # edit this file, so the real boundary is not registering a self-hosted
+    # runner to this public repo at all.
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -70,7 +91,7 @@ jobs:
     # GitHub-HOSTED runner: OIDC trusted publishing needs the id-token endpoint
     # (ACTIONS_ID_TOKEN_REQUEST_URL/TOKEN) which the self-hosted dailey-mcp-runners
     # did not provide — npm then fell through to no-auth (ENEEDAUTH) / placeholder
-    # token (E404). Build/smoke-test stays on the self-hosted runner above.
+    # token (E404). The build job above is GitHub-hosted too (H2, 2026-10-15).
     runs-on: ubuntu-latest
     permissions:
       contents: read

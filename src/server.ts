@@ -49,6 +49,9 @@ export interface BuildOptions {
   includeAdmin: boolean;
   includeLocalAuth: boolean;
   includeAccountSwitch: boolean;
+  /** Tools that read/upload LOCAL file paths. Hosted (http.ts) passes false:
+   *  there "local" is the shared pod's filesystem (security review 2026-10-15, H4). */
+  includeLocalFiles: boolean;
   instructions?: string;
 }
 
@@ -152,8 +155,10 @@ export function buildServer(opts: BuildOptions): McpServer {
   registerEmailTools(server);
   registerDaileyImagesTools(server);
   registerBackupTools(server);
-  registerWordPressMigrateTools(server);
-  registerWordPressImportTools(server);
+  if (opts.includeLocalFiles) {
+    registerWordPressMigrateTools(server);
+    registerWordPressImportTools(server);
+  }
   registerWordPressSnapshotTools(server);
   // WordPress live-edit tools (files/media/wp-cli) wrapping customer-api#18's
   // tenant-scoped live-edit routes. Mutating ops are two-phase (preview → confirm_token).

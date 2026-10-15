@@ -11,7 +11,7 @@ async function toolNames(opts: Parameters<typeof buildServer>[0]): Promise<strin
 }
 
 test('remote surface excludes admin, local-auth, and account-switch tools', async () => {
-  const names = await toolNames({ includeAdmin: false, includeLocalAuth: false, includeAccountSwitch: false });
+  const names = await toolNames({ includeAdmin: false, includeLocalAuth: false, includeAccountSwitch: false, includeLocalFiles: false });
   assert.ok(names.length > 40, `expected >40 tools, got ${names.length}`);
   for (const n of names) {
     assert.ok(!n.startsWith('dailey_admin'), `admin tool leaked: ${n}`);
@@ -28,9 +28,30 @@ test('remote surface excludes admin, local-auth, and account-switch tools', asyn
 });
 
 test('stdio surface includes everything', async () => {
-  const names = await toolNames({ includeAdmin: true, includeLocalAuth: true, includeAccountSwitch: true });
+  const names = await toolNames({ includeAdmin: true, includeLocalAuth: true, includeAccountSwitch: true, includeLocalFiles: true });
   assert.ok(names.some((n) => n.startsWith('dailey_admin')), 'admin tools missing on stdio surface');
   assert.ok(names.includes('dailey_use_account'), 'switch tool missing on stdio surface');
   assert.ok(names.includes('dailey_whoami'), 'local auth tools missing on stdio surface');
   assert.ok(names.includes('dailey_project_transfer_plan'), 'project-transfer tool missing on stdio surface');
+});
+
+// Security review 2026-10-15, H4 (10-14 M2): these two tools read and upload
+// LOCAL file paths. On the shared hosted pod "local" means the pod's own
+// filesystem, so they must never be registered there.
+const LOCAL_FILE_TOOLS = ['dailey_wordpress_migrate', 'dailey_wordpress_import'];
+
+test('hosted surface (the exact http.ts options) excludes the local-file WordPress tools', async () => {
+  const names = await toolNames({ includeAdmin: false, includeLocalAuth: true, includeAccountSwitch: false, includeLocalFiles: false });
+  for (const t of LOCAL_FILE_TOOLS) assert.ok(!names.includes(t), `${t} leaked to the hosted surface`);
+  assert.ok(names.includes('dailey_wp_snapshot'), 'API-only WordPress tools stay on the hosted surface');
+});
+
+test('local stdio surface keeps the local-file WordPress tools', async () => {
+  const names = await toolNames({ includeAdmin: true, includeLocalAuth: true, includeAccountSwitch: true, includeLocalFiles: true });
+  for (const t of LOCAL_FILE_TOOLS) assert.ok(names.includes(t), `${t} missing from the stdio surface`);
+});
+
+test('includeLocalFiles omitted (JS caller) fails safe: no local-file tools', async () => {
+  const names = await toolNames({ includeAdmin: false, includeLocalAuth: true, includeAccountSwitch: false } as any);
+  for (const t of LOCAL_FILE_TOOLS) assert.ok(!names.includes(t), `${t} registered without an explicit includeLocalFiles: true`);
 });
