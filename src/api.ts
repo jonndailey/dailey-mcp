@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { OWN_VERSION } from './version.js';
 import { requestContext } from './context.js';
 
-const API_URL = process.env.DAILEY_API_URL || 'https://os.dailey.cloud/api';
+export const API_URL = process.env.DAILEY_API_URL || 'https://os.dailey.cloud/api';
 const DAILEY_EMAIL = process.env.DAILEY_EMAIL;
 const DAILEY_PASSWORD = process.env.DAILEY_PASSWORD;
 

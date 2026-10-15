@@ -27,7 +27,7 @@ One repo (`dailey-mcp`), two entries sharing one assembly:
 `src/api.ts` gains an `AsyncLocalStorage<{ token: string }>` exported as `tokenContext`. `resolveToken()` checks `tokenContext.getStore()?.token` FIRST, then falls back to today's env/config chain. `http.ts`:
 1. Reads `Authorization: Bearer <token>`; missing/malformed → HTTP 401, `WWW-Authenticate: Bearer resource_metadata="https://mcp.dailey.cloud/.well-known/oauth-protected-resource"`, JSON-RPC error body.
 2. Valid shape → `tokenContext.run({ token }, () => transport.handleRequest(...))`.
-3. No token validation at the MCP layer — a bad token surfaces as capi's 401 through the existing `formatError` path on first tool call.
+3. No token validation at the MCP layer — a bad token surfaces as capi's 401 through the existing `formatError` path on first tool call. **AMENDED 2026-10-15 (security review H3, 10-14 M3):** this let any bearer string get `initialize` + the full `tools/list` and spend the 600/min global window. `http.ts` now checks every token with `GET /customers/me` before the rate windows and before building an McpServer (`src/token-check.ts`: 60 s cache keyed by sha256(token), 300 cache-miss lookups/min). 401/403/404 → HTTP 401 `error="invalid_token"`; capi unreachable/5xx → 503. Only validated tokens count toward the rate windows. capi is still the sole authorizer of every tool call.
 Zero changes to the 41 tool modules.
 
 ## Security (v1 posture — reviewed and expanded 2026-08-09 at Jonny's direction)
