@@ -1,3 +1,4 @@
+import { formatDeploymentEvidence } from './deployment-evidence.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { apiRequest, formatError, textResult, isValidProjectId, invalidProjectIdResult } from '../api.js';
@@ -10,7 +11,7 @@ interface DeployStatus {
   can_deploy?: boolean;
   is_building?: boolean;
   branch?: string;
-  has_new_version?: boolean;
+  has_new_version?: boolean | null;
   new_commits?: number;
   latest_sha?: string | null;
   latest_message?: string | null;
@@ -151,13 +152,13 @@ export function registerDeployStatusTools(server: McpServer) {
       if (status.mode === 'image') {
         lines.push(`Deploy mode: Docker image`);
         lines.push(`Image:       ${status.image || '-'}`);
-        lines.push(`Deployed at: ${status.deployed_at || 'never'}`);
+        lines.push(`Deployed at: ${status.deployed_at || 'unknown'}`);
         lines.push(`Can deploy:  ${status.can_deploy ? 'yes' : 'no'}`);
       } else {
         lines.push(`Deploy mode: Git`);
         lines.push(`Branch:      ${status.branch || 'main'}`);
-        lines.push(`Deployed SHA: ${status.current_sha || 'never'}`);
-        lines.push(`Deployed at: ${status.deployed_at || 'never'}`);
+        lines.push(`Deployed SHA: ${status.current_sha || 'unknown'}`);
+        lines.push(`Deployed at: ${status.deployed_at || 'unknown'}`);
         // Only show Latest SHA when the upstream lookup actually returned
         // something. Emitting "Latest SHA: unknown" on every healthy project
         // is noise that implies something is broken (it's almost always just
@@ -170,19 +171,21 @@ export function registerDeployStatusTools(server: McpServer) {
         }
         // Only show New version when we actually have a Latest SHA to
         // compare against — otherwise the "no" is meaningless.
-        if (status.latest_sha) {
+        if (status.latest_sha && status.has_new_version != null) {
           lines.push(`New version: ${status.has_new_version ? `yes (${status.new_commits || '?'} new commits)` : 'no'}`);
         }
         lines.push(`Building:    ${status.is_building ? 'yes' : 'no'}`);
         lines.push(`Can deploy:  ${status.can_deploy ? 'yes' : 'no'}`);
       }
 
+      lines.push(...formatDeploymentEvidence(status));
+
       // If there's an active or recent build, fetch its progress.
       const historyRes = await apiRequest<{ builds: Build[] }>('GET', `/projects/${project_id}/deploys`);
       if (historyRes.ok && historyRes.data.builds?.length) {
         const latest = historyRes.data.builds[0];
         lines.push('');
-        lines.push(`Latest build: ${latest.id}`);
+        lines.push(`Latest legacy build record: ${latest.id}`);
         lines.push(`  Status:    ${latest.status || 'unknown'}`);
         lines.push(`  Started:   ${latest.started_at || '-'}`);
         if (latest.finished_at) lines.push(`  Finished:  ${latest.finished_at}`);
