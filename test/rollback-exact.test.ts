@@ -25,6 +25,7 @@ test('exact rollback forwards digest, requires verified response, and captures a
   const count = calls.length;
   await handlers.get('dailey_rollback')({project_id:'project',image,build_id:'build'});
   assert.equal(calls.length,count);
-  await handlers.get('dailey_rollback_artifact')({project_id:'project'});
+  await handlers.get('dailey_rollback_artifact')({project_id:'project',process_name:'worker'});
+  assert.deepEqual(calls.at(-1).body,{process_name:'worker'});
   assert.equal(calls.at(-1).path,'/projects/project/rollback-artifact');
 });
