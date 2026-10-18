@@ -27,13 +27,14 @@ One repo (`dailey-mcp`), two entries sharing one assembly:
 `src/api.ts` gains an `AsyncLocalStorage<{ token: string }>` exported as `tokenContext`. `resolveToken()` checks `tokenContext.getStore()?.token` FIRST, then falls back to today's env/config chain. `http.ts`:
 1. Reads `Authorization: Bearer <token>`; missing/malformed → HTTP 401, `WWW-Authenticate: Bearer resource_metadata="https://mcp.dailey.cloud/.well-known/oauth-protected-resource"`, JSON-RPC error body.
 2. Valid shape → `tokenContext.run({ token }, () => transport.handleRequest(...))`.
-3. No token validation at the MCP layer — a bad token surfaces as capi's 401 through the existing `formatError` path on first tool call.
+3. No token validation at the MCP layer — a bad token surfaces as capi's 401 through the existing `formatError` path on first tool call. **AMENDED 2026-10-15 (security review H3, 10-14 M3):** this let any bearer string get `initialize` + the full `tools/list` and spend the 600/min global window. `http.ts` now checks every token with `GET /customers/me` before the rate windows and before building an McpServer (`src/token-check.ts`: 60 s cache keyed by sha256(token), 300 cache-miss lookups/min). 401/403/404 → HTTP 401 `error="invalid_token"`; capi unreachable/5xx → 503. Only validated tokens count toward the rate windows. capi is still the sole authorizer of every tool call.
 Zero changes to the 41 tool modules.
 
 ## Security (v1 posture — reviewed and expanded 2026-08-09 at Jonny's direction)
 **Core property: the server is credential-free.** It holds no API keys, no DB creds, no service tokens — bearer tokens arrive per-request, live only in the request's AsyncLocalStorage, and die with it. A fully compromised pod yields no standing secrets. Preserve this property in all future changes (nothing secret in env/ConfigMap/Secret for this workload).
 
 - Admin, account-switch, and project-transfer tools never registered on the remote surface (auth tools SHIP per the amended Decisions — pure API calls).
+- **AMENDED 2026-10-15 (security review H4, 10-14 M2):** tools that read LOCAL file paths (`dailey_wordpress_migrate`, `dailey_wordpress_import`) are never registered remotely (`includeLocalFiles: false` in `http.ts`); on the shared pod "local" is the pod's own filesystem. Both handlers also refuse whenever a request context is set.
 - In-process per-token rate limit: 60 requests/min (fixed window, `Map<tokenHash, {count, windowStart}>`); over-limit → HTTP 429. Token keys are sha256 truncations — raw tokens never held beyond the request, never logged.
 - No request-body logging; access log line = method, path, status, duration, token hash prefix (8 chars), and tool name when the request is a tools/call (NEVER tool arguments — they can contain user secrets). Errors returned to clients never echo the token.
 - Request body cap: 1 MiB (413 above). Server timeouts: headersTimeout 10s, requestTimeout 120s (long tool calls allowed; slowloris not).
