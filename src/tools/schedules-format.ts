@@ -24,7 +24,7 @@ export type Schedule = {
 export type Run = {
   id: string; schedule_id: string | null; item_id: string | null; run_trigger: 'cron' | 'manual' | 'item'; scheduled_for: string;
   started_at: string | null; finished_at: string | null; status: string; attempt: number; reason: string | null; reason_message: string | null;
-  http_status: number | null; duration_ms: number | null; error: string | null; preview?: string | null;
+  http_status: number | null; duration_ms: number | null; error: string | null; preview?: string | null; logs?: string | null;
 };
 
 export function schedulesToolsEnabled(env: Record<string, string | undefined> = process.env): boolean {
@@ -71,9 +71,10 @@ export function describeSchedule(s: Schedule): string {
   if (Number(s.pending_confirmation) === 1) flags.push('Waiting for you to confirm this address');
   if (Number(s.enabled) !== 1 && s.paused_reason) flags.push(PAUSED[s.paused_reason] || 'Paused');
   if (s.credential) flags.push(`credential ${s.credential}`);
+  const action = s.kind && s.kind !== 'visit' ? s.kind : (s.method || 'GET') + ' ' + target;
   const next = Number(s.enabled) === 1 && s.next_run_at ? ` next ${s.next_run_at}` : '';
   const last = s.last_status ? ` last ${s.last_status}` : '';
-  return `${s.name}  ${when}${tz}  ${s.method || 'GET'} ${target}${next}${last}  id ${s.id}${flags.length ? `\n    ${flags.join(' · ')}` : ''}`;
+  return `${s.name}  ${when}${tz}  ${action}${next}${last}  id ${s.id}${flags.length ? `\n    ${flags.join(' · ')}` : ''}`;
 }
 
 export function describeRun(r: Run): string {

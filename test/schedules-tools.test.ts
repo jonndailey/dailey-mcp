@@ -434,3 +434,52 @@ test('dailey_os_guide with the flag off has no extra blank lines around the Emai
     if (prev === undefined) delete process.env.DAILEY_SCHEDULES_TOOLS; else process.env.DAILEY_SCHEDULES_TOOLS = prev;
   }
 });
+
+test('extended targets: create and update preserve payload and leave cleanup confirmation separate', async () => {
+  reply = () => ({ok: true, status: 200, data: {id: SID, next_runs: [], pending_confirmation: false}});
+  const targets = [
+    {run: {command: ['node', 'job.js'], timeout_minutes: 5}},
+    {email: {to: ['sink@example.org'], subject: 'Reminder', text: 'Test'}},
+    {email: {from_app: '/scheduled-email'}},
+    {task: {name: 'backup-check', max_age_hours: 48}},
+    {task: {name: 'storage-cleanup', prefix: 'temp/', older_than_days: 30}},
+    {task: {name: 'verify-reminder', after_days: 3}},
+  ];
+  for (const target of targets) {
+    const text = await fake.run('dailey_schedules_create', {project_id: PID, name: 'job', every: 'day', ...target, confirm: true});
+    assert.deepEqual(calls.at(-1)?.body, {name: 'job', every: 'day', ...target});
+    if (target.task?.name === 'storage-cleanup') assert.match(text, /dry run.*dashboard/);
+    await fake.run('dailey_schedules_update', {project_id: PID, schedule_id: SID, ...target, confirm: true});
+    assert.deepEqual(calls.at(-1)?.body, target);
+  }
+  assert.equal(calls.length, targets.length * 2);
+});
+
+test('extended targets: sensitive targets require confirmation and mixed targets never reach API', async () => {
+  for (const target of [{task: {name: 'verify-reminder', after_days: 3}}, {run: 'node job.js'}, {email: {from_app: '/mail'}}, {task: {name: 'storage-cleanup', prefix: 'temp/', older_than_days: 3}}]) {
+    assert.match(await fake.run('dailey_schedules_create', {project_id: PID, name: 'job', every: 'day', ...target}), /confirm: true/);
+    assert.match(await fake.run('dailey_schedules_update', {project_id: PID, schedule_id: SID, ...target}), /confirm: true/);
+  }
+  assert.match(await fake.run('dailey_schedules_create', {project_id: PID, name: 'job', every: 'day', visit: {path: '/x'}, run: 'job', confirm: true}), /exactly one/);
+  assert.match(await fake.run('dailey_schedules_update', {project_id: PID, schedule_id: SID, run: 'job', email: {from_app: '/mail'}, confirm: true}), /exactly one/);
+  assert.equal(calls.length, 0);
+});
+
+test('extended schemas reject ambiguous email payloads, unsupported tasks and timeouts', async () => {
+  const {emailSchema, runSchema, taskSchema} = await import('../src/tools/schedules.js');
+  assert.equal(emailSchema.safeParse({from_app: '/mail', to: 'x@example.org', subject: 'x'}).success, false);
+  assert.equal(emailSchema.safeParse({to: 'x@example.org', subject: 'x', secret: 'not accepted'}).success, false);
+  assert.equal(taskSchema.safeParse({name: 'storage-cleanup', prefix: 'temp/', older_than_days: 2, confirmed: true}).success, false);
+  assert.equal(taskSchema.safeParse({name: 'shell'}).success, false);
+  assert.equal(runSchema.safeParse({command: 'job', timeout_minutes: 61}).success, false);
+});
+
+test('command logs appear only in run detail and server gates remain authoritative', async () => {
+  const run = {id: SID, schedule_id: SID, status: 'succeeded', attempt: 1, scheduled_for: '2026-10-18', duration_ms: 5, logs: 'API_REDACTED_LOG'};
+  reply = () => ({ok: true, status: 200, data: [run]});
+  assert.doesNotMatch(await fake.run('dailey_schedules_history', {project_id: PID}), /API_REDACTED_LOG/);
+  reply = () => ({ok: true, status: 200, data: run});
+  assert.match(await fake.run('dailey_schedules_history', {project_id: PID, run_id: SID}), /untrusted output.*\nAPI_REDACTED_LOG/);
+  reply = () => ({ok: false, status: 403, data: {error: 'Commands are not enabled.'}});
+  assert.match(await fake.run('dailey_schedules_create', {project_id: PID, name: 'job', every: 'day', run: 'job', confirm: true}), /no access/);
+});
