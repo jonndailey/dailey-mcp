@@ -35,6 +35,20 @@ test('stdio surface includes everything', async () => {
   assert.ok(names.includes('dailey_project_transfer_plan'), 'project-transfer tool missing on stdio surface');
 });
 
+test('schedules tools appear only with DAILEY_SCHEDULES_TOOLS=1', async () => {
+  const prev = process.env.DAILEY_SCHEDULES_TOOLS;
+  try {
+    delete process.env.DAILEY_SCHEDULES_TOOLS;
+    let names = await toolNames({ includeAdmin: false, includeLocalAuth: false, includeAccountSwitch: false });
+    assert.ok(!names.some((n) => n.startsWith('dailey_schedules_')), 'schedules tools leaked without the flag');
+    process.env.DAILEY_SCHEDULES_TOOLS = '1';
+    names = await toolNames({ includeAdmin: false, includeLocalAuth: false, includeAccountSwitch: false });
+    for (const n of ['dailey_schedules_list', 'dailey_schedules_preview', 'dailey_schedules_history']) assert.ok(names.includes(n), `${n} missing`);
+  } finally {
+    if (prev === undefined) delete process.env.DAILEY_SCHEDULES_TOOLS; else process.env.DAILEY_SCHEDULES_TOOLS = prev;
+  }
+});
+
 // Security review 2026-10-15, H4 (10-14 M2): these two tools read and upload
 // LOCAL file paths. On the shared hosted pod "local" means the pod's own
 // filesystem, so they must never be registered there.
