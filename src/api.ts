@@ -159,25 +159,84 @@ export async function apiRequest<T = unknown>(
   return { ok: res.ok, status: res.status, data };
 }
 
+export const AUTH_REQUIRED = {
+  error_code: 'DAILEY_AUTH_REQUIRED',
+  message: 'Not authenticated',
+  remediation: 'Run `dailey login` then `dailey mcp setup` in your terminal, then reconnect this client',
+  help_url: 'https://docs.dailey.cloud/docs/mcp/',
+} as const;
+
+export const PERMISSION_DENIED_FALLBACK = "You don't have permission to do that";
+
+/**
+ * Pull a human-readable message out of an error body. The customer-api answers
+ * errors as `{ error, message?, detail?, code? }`, where `error` is sometimes a
+ * sentence ("backup does not belong to this project") and sometimes a code
+ * ("no_manager_grant") with the sentence in `message`. Returns null when the
+ * body carries no usable text.
+ */
+export function serverErrorMessage(data: unknown): string | null {
+  if (typeof data === 'string') {
+    const t = data.trim();
+    // An HTML error page or empty body is not a message worth showing.
+    if (!t || t.startsWith('<')) return null;
+    return t.length > 500 ? `${t.slice(0, 500)}…` : t;
+  }
+  if (typeof data !== 'object' || data === null) return null;
+  const d = data as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+  const error = str(d.error);
+  const message = str(d.message);
+  const detail = str(d.detail);
+  const parts: string[] = [];
+  // Prefer the sentence: when `error` is a bare code and `message` exists, lead
+  // with the message and keep the code in parentheses for machine matching.
+  if (error && message && !/\s/.test(error)) {
+    parts.push(`${message} (${error})`);
+  } else {
+    if (error) parts.push(error);
+    if (message && message !== error) parts.push(message);
+  }
+  if (detail && !parts.includes(detail)) parts.push(detail);
+  return parts.length ? parts.join(': ') : null;
+}
+
+/**
+ * Structured result for a 403 from the customer-api. A 403 means the token was
+ * accepted but the action was refused (wrong project, no manager grant,
+ * read-only key, unverified email, ...), so it must NOT be reported as "Not
+ * authenticated": that sent agents and customers off to re-login while the
+ * server's real reason was thrown away.
+ */
+export function permissionDenied(data: unknown) {
+  const code = typeof data === 'object' && data !== null && typeof (data as Record<string, unknown>).code === 'string'
+    ? (data as Record<string, unknown>).code as string
+    : undefined;
+  return {
+    error_code: 'DAILEY_PERMISSION_DENIED',
+    status: 403,
+    message: serverErrorMessage(data) ?? PERMISSION_DENIED_FALLBACK,
+    ...(code ? { server_code: code } : {}),
+  };
+}
+
 export function formatError(res: ApiResponse): string {
-  // 401/403 always returns a structured auth error object as JSON text so MCP
+  // 401 always returns a structured auth error object as JSON text so MCP
   // clients (and agents reading tool output) get a machine-readable signal with
   // a clear remediation path rather than a generic "Error (401): ..." string.
-  if (res.status === 401 || res.status === 403) {
-    // help_url was https://docs.dailey.cloud/auth, which is a 404 — the agent
-    // was handing customers a dead link at the exact moment they were stuck
-    // (2026-08-21 MCP onboarding audit). Both values below are verified pages.
-    return JSON.stringify({
-      error_code: 'DAILEY_AUTH_REQUIRED',
-      message: 'Not authenticated',
-      remediation: 'Run `dailey login` then `dailey mcp setup` in your terminal, then reconnect this client',
-      help_url: 'https://docs.dailey.cloud/docs/mcp/',
-    }, null, 2);
+  // help_url was https://docs.dailey.cloud/auth, which is a 404 — the agent
+  // was handing customers a dead link at the exact moment they were stuck
+  // (2026-08-21 MCP onboarding audit). Both values below are verified pages.
+  if (res.status === 401) {
+    return JSON.stringify(AUTH_REQUIRED, null, 2);
   }
 
   const data = res.data;
   let baseMessage: string;
-  if (typeof data === 'object' && data !== null && 'error' in data) {
+  if (res.status === 403) {
+    // 403 is a permission refusal, not a login problem: show the server's reason.
+    baseMessage = `Error (403): ${serverErrorMessage(data) ?? PERMISSION_DENIED_FALLBACK}`;
+  } else if (typeof data === 'object' && data !== null && 'error' in data) {
     baseMessage = `Error (${res.status}): ${(data as { error: string }).error}`;
   } else if (typeof data === 'object' && data !== null && 'message' in data) {
     baseMessage = `Error (${res.status}): ${(data as { message: string }).message}`;
@@ -237,8 +296,18 @@ export function remediationFor(status: number, data: unknown): string | null {
   if (status === 429) {
     return 'Rate limited. Wait the duration; CLI/API auto-honor Retry-After.';
   }
-  if (status === 401 || status === 403) {
-    return 'Token expired or scope mismatch. Run `dailey login` (CLI) or refresh DAILEY_API_TOKEN.';
+  if (status === 401) {
+    return 'Token expired or missing. Run `dailey login` (CLI) or refresh DAILEY_API_TOKEN.';
+  }
+  if (status === 403) {
+    // Audience mismatch is the one 403 a fresh login can fix.
+    if (haystack.includes('token audience')) {
+      return 'This token was issued for a different app. Run `dailey login` (CLI) or refresh DAILEY_API_TOKEN.';
+    }
+    if (haystack.includes('read-only') || haystack.includes('step_up_required')) {
+      return 'This API key is read-only. Do this in the Dailey Cloud dashboard or use a key with write access.';
+    }
+    return 'You are signed in, but this account is not allowed to do this. Check the project or account you are acting on (dailey_use_account) and the message above; logging in again will not change it.';
   }
   if (status === 502 || status === 503 || status === 504) {
     return 'Dailey API may be temporarily unreachable; retry in a minute.';
