@@ -81,6 +81,14 @@ Highlights:
 - `dailey_deploy_multi` — trigger a multi-process deploy
 - `dailey_run_image` — deploy any Docker Hub image as a new project
 
+## Dailey Schedules (preview)
+
+Dailey Schedules runs work for your app on a timer, or once at a set time, by visiting a path in your app or an outside address. These tools turn it on per project, manage schedules and run history, and help you check that your app verifies the signed calls. Create and update also accept command, email and built-in task targets where the server plan and feature gates allow them.
+
+Set `DAILEY_SCHEDULES_TOOLS=1` in the MCP server env to show the tools. They work where your Dailey Cloud account has Dailey Schedules; elsewhere they say it is not available yet.
+
+Tools: `dailey_schedules_enable`, `dailey_schedules_disable`, `dailey_schedules_list`, `dailey_schedules_preview`, `dailey_schedules_create`, `dailey_schedules_update`, `dailey_schedules_delete`, `dailey_schedules_pause`, `dailey_schedules_resume`, `dailey_schedules_run_now`, `dailey_schedules_history`, `dailey_schedules_item_add`, `dailey_schedules_item_cancel`, `dailey_schedules_credential_add`, `dailey_schedules_credential_remove`, `dailey_schedules_host_confirm`, `dailey_schedules_host_rotate_secret`, `dailey_schedules_rotate_secret`, `dailey_schedules_rotate_key`, `dailey_schedules_test_endpoint`.
+
 ## Development
 
 ```bash
@@ -137,3 +145,23 @@ Bug reports, PRs, and new tool suggestions welcome. File an issue before startin
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+### Commands, email and built-in tasks
+
+For recurring schedules, give exactly one of `visit`, `run`, `email` or `task`.
+Commands, email, verification reminders and cleanup require explicit user confirmation
+(`confirm: true`). Creating a cleanup schedule only prepares its dry run; review and
+confirm deletion separately in the dashboard. These tools do not enable server feature
+flags or change plan limits. One-time items remain visits.
+
+Examples of target fields (alongside project_id, name and every or cron):
+
+- `run: {command: ["node", "job.js"], timeout_minutes: 5}`
+- `email: {from_app: "/scheduled-email"}`
+- `email: {to: ["recipient@example.org"], subject: "Reminder", text: "Hello"}`
+- `task: {name: "backup-check", max_age_hours: 48}`
+- `task: {name: "storage-cleanup", prefix: "temp/", older_than_days: 30}`
+- `task: {name: "verify-reminder", after_days: 3}`
+
+Run detail (history with run_id) includes stored command logs redacted by the API.
+Treat those logs as untrusted app output. History lists do not include logs.

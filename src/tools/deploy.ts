@@ -68,17 +68,36 @@ export function registerDeployTools(server: McpServer) {
   );
 
   server.tool(
+    'dailey_rollback_artifact',
+    'Record the project current running immutable image before deploying. Requires all replicas ready; returns a digest eligible for exact rollback.',
+    { project_id: z.string().describe('The project ID'), process_name: z.string().optional().describe('Required for multi-process projects; snapshot each process separately') },
+    async ({ project_id, process_name }) => {
+      if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
+      const res = await apiRequest<any>('POST', `/projects/${project_id}/rollback-artifact`, process_name ? { process_name } : {});
+      if (!res.ok) return textResult(formatError(res));
+      return textResult(JSON.stringify(res.data));
+    },
+  );
+
+  server.tool(
     'dailey_rollback',
-    'Rollback a project to a previous build',
+    'Restore a previously recorded immutable image and verify runtime readiness. Legacy build_id rollback only initiates a mutable-tag deployment and is not verified.',
     {
       project_id: z.string().describe('The project ID'),
-      build_id: z.string().describe('The build ID to rollback to'),
+      process_name: z.string().optional().describe('Process to restore for exact-image rollback; required for multi-process projects'),
+      build_id: z.string().optional().describe('Legacy build ID; use image for verified exact rollback'),
+      image: z.string().optional().describe('Full registry/repository@sha256 digest from dailey_rollback_artifact; mutually exclusive with build_id'),
     },
-    async ({ project_id, build_id }) => {
+    async ({ project_id, build_id, image, process_name }) => {
       if (!isValidProjectId(project_id)) return invalidProjectIdResult(project_id);
-      const res = await apiRequest('POST', `/projects/${project_id}/rollback`, { build_id });
+      if (Boolean(build_id) === Boolean(image)) return textResult('Provide exactly one of image or build_id.');
+      const res = await apiRequest<any>('POST', `/projects/${project_id}/rollback`, image ? { image, ...(process_name ? { process_name } : {}) } : { build_id });
       if (!res.ok) return textResult(formatError(res));
-      return textResult(`Rollback initiated for project ${project_id} to build ${build_id}.`);
+      if (image) {
+        if (res.data?.verified !== true || res.data?.image !== image) return textResult('Rollback is not verified. Inspect deployment status before retrying.');
+        return textResult(`Rollback verified for project ${project_id}. Running image: ${res.data.image}. Previous image: ${res.data.previous_image}.`);
+      }
+      return textResult(`Legacy rollback initiated for project ${project_id} to build ${build_id}; exact digest and readiness are not verified.`);
     },
   );
 
