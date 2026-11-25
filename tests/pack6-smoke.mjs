@@ -36,7 +36,7 @@ console.log('Unit: remediationFor()');
 unit('423 → account-locked hint', /account locked/i.test(remediationFor(423, {}) || ''));
 unit('429 → rate-limited hint', /rate limited|retry-after/i.test(remediationFor(429, {}) || ''));
 unit('401 → token hint', /token expired|dailey login/i.test(remediationFor(401, {}) || ''));
-unit('403 → token hint', /token expired|dailey login/i.test(remediationFor(403, {}) || ''));
+unit('403 → permission hint (not a login hint)', /not allowed/i.test(remediationFor(403, {}) || '') && !/run `dailey login`/i.test(remediationFor(403, {}) || ''));
 unit('502 → unreachable hint', /unreachable/i.test(remediationFor(502, {}) || ''));
 unit(
   'AlreadyExists registry → retry hint',

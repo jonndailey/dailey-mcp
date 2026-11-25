@@ -6,6 +6,7 @@ import {
   jsonResult,
   getActiveAccount,
   setActiveAccount,
+  permissionDenied,
 } from '../api.js';
 
 interface ManagedAccount {
@@ -35,8 +36,11 @@ export function registerAccountTools(
     async () => {
       const res = await apiRequest<ManagedAccount[]>('GET', '/customers/me/managed-accounts');
       if (!res.ok) {
-        if (res.status === 401 || res.status === 403) {
+        if (res.status === 401) {
           return jsonResult(AUTH_REQUIRED_ERROR);
+        }
+        if (res.status === 403) {
+          return jsonResult(permissionDenied(res.data));
         }
         return jsonResult({ error: formatError(res) });
       }
@@ -84,8 +88,11 @@ export function registerAccountTools(
 
         const res = await apiRequest<ManagedAccount[]>('GET', '/customers/me/managed-accounts');
         if (!res.ok) {
-          if (res.status === 401 || res.status === 403) {
+          if (res.status === 401) {
             return jsonResult(AUTH_REQUIRED_ERROR);
+          }
+          if (res.status === 403) {
+            return jsonResult({ ok: false, ...permissionDenied(res.data) });
           }
           return jsonResult({ ok: false, error: formatError(res) });
         }

@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { apiRequest, formatError, textResult, jsonResult, getActiveAccount, isValidProjectId, invalidProjectIdResult } from '../api.js';
+import { apiRequest, formatError, textResult, jsonResult, getActiveAccount, isValidProjectId, invalidProjectIdResult, permissionDenied } from '../api.js';
 
 interface ManagedAccount {
   managed_customer_id: string;
@@ -49,8 +49,11 @@ export function registerAuthTools(server: McpServer) {
     async () => {
       const res = await apiRequest<UserInfo>('GET', '/customers/me');
       if (!res.ok) {
-        if (res.status === 401 || res.status === 403) {
+        if (res.status === 401) {
           return jsonResult(AUTH_REQUIRED_ERROR);
+        }
+        if (res.status === 403) {
+          return jsonResult(permissionDenied(res.data));
         }
         return textResult(formatError(res));
       }
@@ -82,11 +85,28 @@ export function registerAuthTools(server: McpServer) {
       const res = await apiRequest<UserInfo>('GET', '/customers/me');
 
       if (!res.ok) {
-        if (res.status === 401 || res.status === 403) {
+        if (res.status === 401) {
           return jsonResult({
             authenticated: false,
             source: null,
             recommended_action: 'Run `dailey auth setup` in your terminal',
+          });
+        }
+        if (res.status === 403) {
+          // The token was presented but the request was refused (inactive
+          // account, wrong audience, managed-account grant missing, ...).
+          // Report the server's reason instead of claiming "not signed in".
+          const denied = permissionDenied(res.data);
+          return jsonResult({
+            authenticated: false,
+            authorized: false,
+            source: null,
+            status: 403,
+            error: denied.message,
+            ...(denied.server_code ? { server_code: denied.server_code } : {}),
+            recommended_action: getActiveAccount()
+              ? `The API refused this session while acting as "${getActiveAccount()}": ${denied.message}. Try dailey_use_account({ clear: true }) to operate as yourself.`
+              : `The API refused this session: ${denied.message}`,
           });
         }
         // Non-auth error — surface it but don't claim unauthenticated
