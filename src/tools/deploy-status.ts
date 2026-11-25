@@ -7,6 +7,7 @@ interface DeployStatus {
   image?: string;
   current_sha?: string | null;
   deployed_at?: string | null;
+  restart_reason?: string | null;
   can_deploy?: boolean;
   is_building?: boolean;
   branch?: string;
@@ -151,13 +152,15 @@ export function registerDeployStatusTools(server: McpServer) {
       if (status.mode === 'image') {
         lines.push(`Deploy mode: Docker image`);
         lines.push(`Image:       ${status.image || '-'}`);
-        lines.push(`Deployed at: ${status.deployed_at || 'never'}`);
+        lines.push(`Deployed at: ${status.deployed_at || 'unknown'}`);
+        if (status.restart_reason) lines.push(`Restart reason: ${status.restart_reason}`);
         lines.push(`Can deploy:  ${status.can_deploy ? 'yes' : 'no'}`);
       } else {
         lines.push(`Deploy mode: Git`);
         lines.push(`Branch:      ${status.branch || 'main'}`);
-        lines.push(`Deployed SHA: ${status.current_sha || 'never'}`);
-        lines.push(`Deployed at: ${status.deployed_at || 'never'}`);
+        lines.push(`Deployed SHA: ${status.current_sha || 'unknown'}`);
+        lines.push(`Deployed at: ${status.deployed_at || 'unknown'}`);
+        if (status.restart_reason) lines.push(`Restart reason: ${status.restart_reason}`);
         // Only show Latest SHA when the upstream lookup actually returned
         // something. Emitting "Latest SHA: unknown" on every healthy project
         // is noise that implies something is broken (it's almost always just
