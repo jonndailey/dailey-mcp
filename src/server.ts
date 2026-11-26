@@ -1,7 +1,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import { z } from 'zod';
-import { getActiveAccount, setActiveAccount } from './api.js';
+import { getActiveAccount, setActiveAccount, resolveToken } from './api.js';
+import { requestContext, mcpToolName } from './context.js';
 import { OWN_VERSION } from './version.js';
 import { registerAuthTools } from './tools/auth.js';
 import { registerAccountTools } from './tools/accounts.js';
@@ -83,9 +84,27 @@ export function buildServer(opts: BuildOptions): McpServer {
     // undoes the switch the moment the call returns (dailey_use_account was
     // silently non-sticky on stdio because of this). Register them raw.
     const SESSION_ACCOUNT_SETTERS = new Set(['dailey_use_account']);
+
+  async function runWithMcpUsage<T>(name: string, fn: () => Promise<T>): Promise<T> {
+    const tool = mcpToolName(name);
+    const existing = requestContext.getStore();
+    if (existing) {
+      if (tool) existing.tool = tool;
+      if (!existing.transport) existing.transport = 'http';
+      return fn();
+    }
+    return requestContext.run({
+      token: resolveToken(),
+      tool,
+      transport: 'stdio',
+      account: getActiveAccount(),
+    }, fn);
+  }
+
+
     (server as any).tool = (name: string, description: string, schema: Record<string, unknown>, handler: (...a: any[]) => any) => {
       if (SESSION_ACCOUNT_SETTERS.has(name)) {
-        return originalTool(name, description, schema as any, handler);
+        return originalTool(name, description, schema as any, ((args: any, extra: any) => runWithMcpUsage(name, () => handler(args, extra))) as any);
       }
       const augmented = 'account' in schema
         ? schema
@@ -95,7 +114,7 @@ export function buildServer(opts: BuildOptions): McpServer {
               'Managed-account slug to run THIS call against (per-call scope; overrides the dailey_use_account session state for this call only). Omit to use the current session account.',
             ),
           };
-      return originalTool(name, description, augmented as any, async (args: any, extra: any) => {
+      return originalTool(name, description, augmented as any, async (args: any, extra: any) => runWithMcpUsage(name, async () => {
         const requested: string | undefined =
           typeof args?.account === 'string' && args.account.trim() ? args.account.trim() : undefined;
         const prev = getActiveAccount();
@@ -112,7 +131,7 @@ export function buildServer(opts: BuildOptions): McpServer {
           // dailey_use_account itself must keep its session-setting behavior.
           if (requested) setActiveAccount(prev);
         }
-      });
+      }));
     };
   }
 

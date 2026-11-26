@@ -2,7 +2,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
 import { OWN_VERSION } from './version.js';
-import { requestContext } from './context.js';
+import { requestContext, mcpToolName } from './context.js';
 
 export const API_URL = process.env.DAILEY_API_URL || 'https://os.dailey.cloud/api';
 const DAILEY_EMAIL = process.env.DAILEY_EMAIL;
@@ -124,6 +124,14 @@ export async function apiRequest<T = unknown>(
       // X-Dailey-Source: mcp but NO version header is a pre-1.20.7 client.
       'X-Dailey-Client-Version': OWN_VERSION,
     };
+    // Usage telemetry: tool name only (never arguments) and how this server
+    // is being spoken to. Omitted on initialize / tools/list / token refresh.
+    const store = requestContext.getStore();
+    const tool = mcpToolName(store?.tool);
+    if (tool) headers['X-Dailey-MCP-Tool'] = tool;
+    if (store?.transport === 'stdio' || store?.transport === 'http') {
+      headers['X-Dailey-MCP-Transport'] = store.transport;
+    }
     // Manager / managed-accounts: when an active account is set, scope every
     // request to it. The server verifies a live consent grant; absent header =
     // normal self-scoped behavior.
