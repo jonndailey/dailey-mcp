@@ -2,7 +2,7 @@ import http from 'node:http';
 import { pathToFileURL } from 'node:url';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { buildServer } from './server.js';
-import { requestContext } from './context.js';
+import { requestContext, mcpToolName } from './context.js';
 import { createTokenChecker, hashToken } from './token-check.js';
 
 const PORT = Number(process.env.PORT || 8080);
@@ -146,7 +146,7 @@ export function createHttpServer(): http.Server {
       if (raw === null) { rpcError(res, 413, -32600, 'Body too large (limit 1 MiB)'); return; }
       let parsed: unknown;
       try { parsed = JSON.parse(raw); } catch { rpcError(res, 400, -32700, 'Parse error'); return; }
-      const toolName = ((parsed as any)?.method === 'tools/call' ? String((parsed as any)?.params?.name ?? '') : '').replace(/[^\w.-]/g, '').slice(0, 64);
+      const toolName = ((parsed as any)?.method === 'tools/call') ? mcpToolName((parsed as any)?.params?.name) : undefined;
       if (toolName) logSuffix += ` tool=${toolName}`;
 
       // Stateless: fresh server+transport per request; identity lives in ALS.
@@ -155,7 +155,7 @@ export function createHttpServer(): http.Server {
       cors(res);
       res.on('error', () => {});
       res.on('close', () => { transport.close().catch(() => {}); mcp.close().catch(() => {}); });
-      await requestContext.run({ token }, async () => {
+      await requestContext.run({ token, transport: 'http', tool: toolName }, async () => {
         await mcp.connect(transport);
         await transport.handleRequest(req, res, parsed);
       });
