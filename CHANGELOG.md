@@ -3,7 +3,16 @@
 Changes to `@daileyos/mcp-server`, newest first. Earlier releases are recorded
 in git tags (`v1.2.0` through `v1.22.0`) and their commit messages.
 
-## 1.22.1 (unreleased, awaiting approval to publish)
+## 1.22.2 (2026-11-26)
+
+Usage-header release so Core and customer-api can record MCP last-used
+time, call volume, top tools, and transport, without arguments or secrets.
+
+### Added
+- Sends `X-Dailey-MCP-Tool` (tool name only) and `X-Dailey-MCP-Transport`
+  (`stdio` or `http`) on authenticated customer-api requests (#28).
+
+## 1.22.1 (2026-11-24)
 
 Reconciles the two lines of work so one release carries both:
 `feat/schedules-tools` (the source of the published 1.22.0) merged with `main`.
