@@ -2,10 +2,28 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { apiRequest, formatError, textResult, isValidProjectId, invalidProjectIdResult } from '../api.js';
 
-interface DeployStatus {
+interface RuntimeEvidence {
+  available?: boolean;
+  desired_image?: string | null;
+  running_images?: string[];
+  ready_replicas?: number;
+  desired_replicas?: number;
+  rollout_complete?: boolean;
+  commit_sha?: string | null;
+  rollout_state?: RolloutState | null;
+  target_sha?: string | null;
+  serving_shas?: string[];
+}
+
+type RolloutState = 'complete' | 'rolling_out' | 'failed' | 'stopped';
+
+export interface DeployStatus {
   mode?: 'git' | 'image';
   image?: string;
   current_sha?: string | null;
+  target_sha?: string | null;
+  rollout_state?: RolloutState | null;
+  runtime?: RuntimeEvidence;
   deployed_at?: string | null;
   restart_reason?: string | null;
   can_deploy?: boolean;
@@ -134,6 +152,46 @@ function getRuntimeCrashGuidance(logs: string): { summary: string; fix: string }
   return null;
 }
 
+function hexTag(image: string | null | undefined): string | null {
+  return (image || '').match(/:([a-f0-9]{7,40})$/i)?.[1] || null;
+}
+
+/**
+ * The value printed after "Deployed SHA:".
+ *
+ * current_sha is only set once a rollout has fully settled. Right after a deploy
+ * the old pod can still be serving while the new one starts, which used to print
+ * "unknown" even though the restart reason already named the new image
+ * (SR-XETK3T7D, 2026-11-27). While a rollout is in flight we now print the image
+ * tag being rolled out, clearly labeled, and never as a settled value.
+ *
+ * Works against both API shapes: newer responses carry target_sha/rollout_state;
+ * older ones only carry runtime.desired_image + runtime.rollout_complete.
+ */
+export function formatDeployedSha(status: DeployStatus): string {
+  if (status.current_sha) return status.current_sha;
+  const rt: RuntimeEvidence = status.runtime || {};
+  const desired = typeof rt.desired_replicas === 'number' ? rt.desired_replicas : undefined;
+  let state: RolloutState | null = status.rollout_state || rt.rollout_state || null;
+  if (!state && rt.available && rt.rollout_complete === false && (desired === undefined || desired > 0)) state = 'rolling_out';
+  if (state !== 'rolling_out' && state !== 'failed') return 'unknown';
+  const target = status.target_sha || rt.target_sha || hexTag(rt.desired_image);
+  if (!target) return 'unknown';
+  if (state === 'failed') {
+    const serving = (rt.serving_shas && rt.serving_shas.length
+      ? rt.serving_shas
+      : (rt.running_images || []).map(hexTag).filter((t): t is string => !!t))
+      .filter((t) => t !== target);
+    const unique = [...new Set(serving)];
+    return unique.length === 1
+      ? `${unique[0]} (rollout of ${target} failed; previous version still serving)`
+      : `unknown (rollout of ${target} failed)`;
+  }
+  const ready = typeof rt.ready_replicas === 'number' && typeof desired === 'number' && desired > 0
+    ? `, ${rt.ready_replicas}/${desired} ready` : '';
+  return `${target} (rolling out${ready}; not settled yet)`;
+}
+
 export function registerDeployStatusTools(server: McpServer) {
   // Project-level pre-deploy status: can I deploy? is a build running? is there a new commit?
   // Also fetches the latest build row to show progress emojis during active builds.
@@ -158,7 +216,7 @@ export function registerDeployStatusTools(server: McpServer) {
       } else {
         lines.push(`Deploy mode: Git`);
         lines.push(`Branch:      ${status.branch || 'main'}`);
-        lines.push(`Deployed SHA: ${status.current_sha || 'unknown'}`);
+        lines.push(`Deployed SHA: ${formatDeployedSha(status)}`);
         lines.push(`Deployed at: ${status.deployed_at || 'unknown'}`);
         if (status.restart_reason) lines.push(`Restart reason: ${status.restart_reason}`);
         // Only show Latest SHA when the upstream lookup actually returned

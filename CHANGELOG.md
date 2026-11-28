@@ -3,6 +3,19 @@
 Changes to `@daileyos/mcp-server`, newest first. Earlier releases are recorded
 in git tags (`v1.2.0` through `v1.22.0`) and their commit messages.
 
+## 1.22.3 (2026-11-27)
+
+Fixes "Deployed SHA: unknown" during a rollout (Jackson Howard, SR-XETK3T7D).
+
+### Fixed
+- `dailey_deploy_status` no longer prints `unknown` while a deploy is rolling
+  out. The incoming SHA is shown, labeled: `<sha> (rolling out, 1/2 ready; not
+  settled yet)`. If the rollout fails it says so and names the version still
+  serving. Uses the new `rollout_state` and `target_sha` fields from the
+  platform (customer-api #166) and falls back to the desired image tag from
+  older platform versions. `unknown` is kept for a SHA that truly cannot be
+  determined (#30).
+
 ## 1.22.2 (2026-11-26)
 
 Usage-header release so Core and customer-api can record MCP last-used
